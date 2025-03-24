@@ -39,7 +39,6 @@ include_directories(
 # ╰──────────────────────────────────────╯
 set(SAF_BUILD_TESTS OFF)
 set(SAF_BUILD_EXAMPLES OFF)
-set(SAF_USE_FFTW ON)
 set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
 add_subdirectory(Libraries/Spatial_Audio_Framework EXCLUDE_FROM_ALL)
 include_directories(
@@ -63,6 +62,7 @@ pd_add_external(
   "${CMAKE_CURRENT_SOURCE_DIR}/Sources/encoder~.c;${ENCODER_TILDE_SOURCE}"
   LINK_LIBRARIES openblas lapacke_static saf)
 
+# ─────────────────────────────────────
 file(
   GLOB
   DECODER_TILDE_SOURCE
@@ -72,3 +72,10 @@ pd_add_external(
   saf.decoder~
   "${CMAKE_CURRENT_SOURCE_DIR}/Sources/decoder~.c;${DECODER_TILDE_SOURCE}"
   LINK_LIBRARIES openblas lapacke_static saf)
+
+# ─────────────────────────────────────
+# file( GLOB BINAURAL_TILDE_SOURCE
+# "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_bin/*.c"
+# ) pd_add_external( saf.binaural~
+# "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binaural~.c;${BINAURAL_TILDE_SOURCE}"
+# LINK_LIBRARIES openblas lapacke_static saf)

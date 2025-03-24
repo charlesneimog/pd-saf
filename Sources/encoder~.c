@@ -4,7 +4,7 @@
 static t_class *encoder_tilde_class;
 
 // ─────────────────────────────────────
-typedef struct _encoder_tilde {
+typedef struct _binaural_tilde {
     t_object obj;
     void *hAmbi;
     t_sample sample;
@@ -30,8 +30,7 @@ t_int *encoder_tilde_perform(t_int *w) {
         x->outs[i] = (t_sample *)(w[3 + x->num_sources + i]);
     }
 
-    ambi_enc_process(x->hAmbi, (const float *const *)x->ins, x->outs,
-                     x->num_sources, x->nSH, n);
+    ambi_enc_process(x->hAmbi, (const float *const *)x->ins, x->outs, x->num_sources, x->nSH, n);
 
     return (w + 3 + x->num_sources + x->nSH);
 }
@@ -69,11 +68,9 @@ void encoder_tilde_dsp(t_encoder_tilde *x, t_signal **sp) {
 }
 
 // ─────────────────────────────────────
-void encoder_tilde_set_source(t_encoder_tilde *x, t_floatarg idx,
-                              t_floatarg azi, t_floatarg elev) {
+void encoder_tilde_set_source(t_encoder_tilde *x, t_floatarg idx, t_floatarg azi, t_floatarg elev) {
     if (idx < 0 || idx >= x->num_sources) {
-        pd_error(x, "Source index %d out of range (0-%d)", (int)idx,
-                 x->num_sources - 1);
+        pd_error(x, "Source index %d out of range (0-%d)", (int)idx, x->num_sources - 1);
         return;
     }
     ambi_enc_setSourceAzi_deg(x->hAmbi, (int)idx, azi);
@@ -136,16 +133,14 @@ void encoder_tilde_free(t_encoder_tilde *x) {
 
 // ─────────────────────────────────────
 void setup_saf0x2eencoder_tilde(void) {
-    encoder_tilde_class =
-        class_new(gensym("saf.encoder~"), (t_newmethod)encoder_tilde_new,
-                  (t_method)encoder_tilde_free, sizeof(t_encoder_tilde),
-                  CLASS_DEFAULT | CLASS_MULTICHANNEL, A_GIMME, 0);
+    encoder_tilde_class = class_new(gensym("saf.encoder~"), (t_newmethod)encoder_tilde_new,
+                                    (t_method)encoder_tilde_free, sizeof(t_encoder_tilde),
+                                    CLASS_DEFAULT | CLASS_MULTICHANNEL, A_GIMME, 0);
 
     CLASS_MAINSIGNALIN(encoder_tilde_class, t_encoder_tilde, sample);
-    class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_dsp,
-                    gensym("dsp"), A_CANT, 0);
-    class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_set_source,
-                    gensym("source"), A_DEFFLOAT, A_DEFFLOAT, A_DEFFLOAT, 0);
+    class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_dsp, gensym("dsp"), A_CANT, 0);
+    class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_set_source, gensym("source"),
+                    A_DEFFLOAT, A_DEFFLOAT, A_DEFFLOAT, 0);
     // class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_set_norm,
     //                 gensym("norm"), A_DEFFLOAT, 0);
     // class_addmethod(encoder_tilde_class,
