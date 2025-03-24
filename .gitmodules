@@ -1,6 +1,6 @@
 [submodule "Libraries/Spatial_Audio_Framework"]
 	path = Libraries/Spatial_Audio_Framework
 	url = https://github.com/leomccormack/Spatial_Audio_Framework
-[submodule "Resources/pd.build"]
-	path = Resources/pd.build
-	url = https://github.com/charlesneimog/pd.build
+[submodule "Libraries/OpenBLAS"]
+	path = Libraries/OpenBLAS
+	url = https://github.com/OpenMathLib/OpenBLAS.git
