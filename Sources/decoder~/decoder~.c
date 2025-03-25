@@ -1,11 +1,9 @@
 #include <ambi_dec.h>
 #include <m_pd.h>
-#include <stdlib.h>
 
 static t_class *decoder_tilde_class;
 #define ORDER2NSH(order) ((order + 1) * (order + 1))
 
-// ─────────────────────────────────────
 typedef struct _decoder_tilde {
     t_object obj;
     void *hAmbi;
@@ -23,15 +21,17 @@ typedef struct _decoder_tilde {
 t_int *decoder_tilde_perform(t_int *w) {
     t_decoder_tilde *x = (t_decoder_tilde *)(w[1]);
     int n = (int)(w[2]);
+
     for (int i = 0; i < x->nSH; i++) {
         x->ins[i] = (t_sample *)(w[3 + i]);
     }
+
     for (int i = 0; i < x->num_loudspeakers; i++) {
         x->outs[i] = (t_sample *)(w[3 + x->nSH + i]);
     }
 
-    ambi_dec_process(x->hAmbi, (const float *const *)x->ins, x->outs, x->nSH,
-                     x->num_loudspeakers, n);
+    ambi_dec_process(x->hAmbi, (const float *const *)x->ins, x->outs, x->nSH, x->num_loudspeakers,
+                     n);
 
     return (w + 3 + x->nSH + x->num_loudspeakers);
 }
@@ -43,13 +43,13 @@ void decoder_tilde_dsp(t_decoder_tilde *x, t_signal **sp) {
     int sigvecsize = sum + 2;
     t_int *sigvec = getbytes(sigvecsize * sizeof(t_int));
 
-    //
+    ambi_dec_initCodec(x->hAmbi);
     ambi_dec_init(x->hAmbi, sp[0]->s_sr);
 
-    // getRSH(order, (float *)direction_deg, 1, y);
-    // cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, nSH, signalLength, 1, 1.0f, y, 1,
-    // inSig,
-    //             signalLength, 0.0f, FLATTEN2D(shSig), signalLength);
+    int framesize = ambi_dec_getFrameSize();
+    if (framesize != sp[0]->s_n) {
+        return;
+    }
 
     for (i = x->nSH; i < sum; i++) {
         signal_setmultiout(&sp[i], 1);
@@ -60,15 +60,6 @@ void decoder_tilde_dsp(t_decoder_tilde *x, t_signal **sp) {
     for (i = 0; i < sum; i++) {
         sigvec[2 + i] = (t_int)sp[i]->s_vec;
     }
-
-    if (x->ins) {
-        freebytes(x->ins, x->nSH * sizeof(t_sample *));
-    }
-    if (x->outs) {
-        freebytes(x->outs, x->num_loudspeakers * sizeof(t_sample *));
-    }
-    x->ins = (t_sample **)getbytes(x->nSH * sizeof(t_sample *));
-    x->outs = (t_sample **)getbytes(x->num_loudspeakers * sizeof(t_sample *));
 
     dsp_addv(decoder_tilde_perform, sigvecsize, sigvec);
     freebytes(sigvec, sigvecsize * sizeof(t_int));
@@ -94,19 +85,22 @@ void *decoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     x->nSH = (order + 1) * (order + 1);
     x->num_loudspeakers = num_loudspeakers;
 
-    // Create the Ambisonic decoder instance.
     ambi_dec_create(&x->hAmbi);
     ambi_dec_setNormType(x->hAmbi, NORM_N3D);
-    ambi_dec_setMasterDecOrder(x->hAmbi, ORDER2NSH(order));
+    ambi_dec_setMasterDecOrder(x->hAmbi, order);
 
-    logpost(x, 3, "SAF decoder~: %d SH, %d loudspeakers", x->nSH, x->num_loudspeakers);
     if (x->num_loudspeakers == 2) {
         ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_STEREO);
+    } else if (x->num_loudspeakers == 3) {
+        ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_STEREO);
+    } else if (x->num_loudspeakers == 4) {
+        ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_4);
+    } else if (x->num_loudspeakers == 5) {
+        ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_5PX);
     } else if (x->num_loudspeakers == 22) {
         ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_22PX);
     }
 
-    // Add other presets as needed
     ambi_dec_setDecMethod(x->hAmbi, DECODING_METHOD_SAD, 0);
     ambi_dec_setDecMethod(x->hAmbi, DECODING_METHOD_SAD, 1);
 
@@ -118,8 +112,8 @@ void *decoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
         outlet_new(&x->obj, &s_signal);
     }
 
-    x->ins = NULL;
-    x->outs = NULL;
+    x->ins = (t_sample **)getbytes(x->nSH * sizeof(t_sample *));
+    x->outs = (t_sample **)getbytes(x->num_loudspeakers * sizeof(t_sample *));
 
     return (void *)x;
 }
