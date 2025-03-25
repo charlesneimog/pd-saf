@@ -1,4 +1,4 @@
-#include <ambi_dec.h>
+#include "ambi_dec.h"
 #include <m_pd.h>
 
 static t_class *decoder_tilde_class;
@@ -48,6 +48,7 @@ void decoder_tilde_dsp(t_decoder_tilde *x, t_signal **sp) {
 
     int framesize = ambi_dec_getFrameSize();
     if (framesize != sp[0]->s_n) {
+        pd_error(x, "Framesize mismatch");
         return;
     }
 

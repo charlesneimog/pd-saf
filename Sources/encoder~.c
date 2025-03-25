@@ -1,5 +1,6 @@
-#include <ambi_enc.h>
 #include <m_pd.h>
+
+#include <ambi_enc.h>
 
 static t_class *encoder_tilde_class;
 
@@ -43,6 +44,17 @@ void encoder_tilde_dsp(t_encoder_tilde *x, t_signal **sp) {
     int sigvecsize = sum + 2; // +1 for x, +1 for blocksize
     t_int *sigvec = getbytes(sigvecsize * sizeof(t_int));
     ambi_enc_init(x->hAmbi, sys_getsr());
+
+    int framesize = ambi_enc_getFrameSize();
+    if (framesize != sp[0]->s_n) {
+        pd_error(x, "[saf.encoder~] Framesize mismatch");
+        return;
+    }
+
+    ambi_enc_setOutputOrder(x->hAmbi, (SH_ORDERS)x->order);
+    ambi_enc_setNormType(x->hAmbi, NORM_N3D);
+    ambi_enc_setEnablePostScaling(x->hAmbi, 0);
+    ambi_enc_setNumSources(x->hAmbi, 2);
 
     for (int i = x->num_sources; i < sum; i++) {
         signal_setmultiout(&sp[i], 1);
@@ -102,10 +114,6 @@ void *encoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     x->nSH = (order + 1) * (order + 1);
 
     // Default configuration
-    ambi_enc_setOutputOrder(x->hAmbi, (SH_ORDERS)order);
-    ambi_enc_setNormType(x->hAmbi, NORM_N3D);
-    ambi_enc_setEnablePostScaling(x->hAmbi, 0);
-    ambi_enc_setNumSources(x->hAmbi, num_sources);
 
     for (int i = 1; i < x->num_sources; i++) {
         inlet_new(&x->obj, &x->obj.ob_pd, &s_signal, &s_signal);
