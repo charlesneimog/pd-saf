@@ -1,5 +1,6 @@
 #include <ambi_dec.h>
 #include <m_pd.h>
+#include <math.h>
 #include <pthread.h>
 #include <string.h>
 
@@ -29,11 +30,9 @@ typedef struct _decoder_tilde {
 } t_decoder_tilde;
 
 // ─────────────────────────────────────
-void *decoder_tilde_initCoded(void *x_void) {
+void *decoder_tilde_initcodec(void *x_void) {
     t_decoder_tilde *x = (t_decoder_tilde *)x_void;
     ambi_dec_initCodec(x->hAmbi);
-    logpost(x, 3, "[saf.decoder~] codec initialized!");
-
     logpost(x, 2, "[saf.decoder~] decoder codec initialized!");
     return NULL;
 }
@@ -51,19 +50,16 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
         if (fd > 1) {
             logpost(x, 2, "[saf.decoder~] Opening %s.", path);
             ambi_dec_setSofaFilePath(x->hAmbi, sofa_path->s_name);
-            ambi_dec_initCodec(x->hAmbi);
         } else {
             pd_error(x->glist, "[saf.decoder~] Could not open sofa file!");
         }
     } else if (strcmp(method, "binaural") == 0) {
         t_float binaural = atom_getfloat(argv + 1);
         ambi_dec_setBinauraliseLSflag(x->hAmbi, binaural);
-        ambi_dec_initCodec(x->hAmbi);
         logpost(x, 2, "[saf.decoder~] reinit decoder codec...");
     } else if (strcmp(method, "defaultHRIR") == 0) {
         t_float defaultHRIR = atom_getfloat(argv + 1);
         ambi_dec_setUseDefaultHRIRsflag(x->hAmbi, defaultHRIR);
-        ambi_dec_initCodec(x->hAmbi);
     } else if (strcmp(method, "masterDecOrder") == 0) {
         int order = atom_getint(argv + 1);
         ambi_dec_setMasterDecOrder(x->hAmbi, order);
@@ -75,11 +71,26 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
         int order = atom_getint(argv + 1);
         ambi_dec_setDecOrderAllBands(x->hAmbi, order);
     } else if (strcmp(method, "loudspeakerpos") == 0) {
-        int index = atom_getint(argv + 1);
+        int index = atom_getint(argv + 1) - 1;
         float azi = atom_getfloat(argv + 2);
         float elev = atom_getfloat(argv + 3);
-        ambi_dec_setLoudspeakerAzi_deg(x->hAmbi, index, azi);
-        ambi_dec_setLoudspeakerElev_deg(x->hAmbi, index, elev);
+        int loudspeakercount = ambi_dec_getNumLoudspeakers(x->hAmbi);
+        if (index < 0) {
+            pd_error(x, "[saf.decoder~] %d is not a valid speaker index.", index + 1);
+            return;
+
+        } else if (loudspeakercount >= index) {
+            ambi_dec_setLoudspeakerAzi_deg(x->hAmbi, index, azi);
+            ambi_dec_setLoudspeakerElev_deg(x->hAmbi, index, elev);
+            logpost(x, 3, "[saf.decoder~] Setting loudspeaker position %d to %f %f", index + 1, azi,
+                    elev);
+            ambi_dec_refreshSettings(x->hAmbi);
+        } else {
+            pd_error(x,
+                     "[saf.decoder~] Trying to set loudspeaker position %d, but only %d available.",
+                     (int)index + 1, (int)loudspeakercount);
+            return;
+        }
     } else if (strcmp(method, "hrirpreproc") == 0) {
         int state = atom_getint(argv + 1);
         ambi_dec_setEnableHRIRsPreProc(x->hAmbi, state);
@@ -114,11 +125,6 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
         pd_error(x->glist, "[saf.decoder~] Unknown set method: %s", method);
         return;
     }
-    ambi_dec_refreshSettings(x->hAmbi);
-
-    pthread_t initThread;
-    pthread_create(&initThread, NULL, decoder_tilde_initCoded, (void *)x);
-    pthread_detach(initThread);
 }
 
 // ╭─────────────────────────────────────╮
@@ -193,12 +199,16 @@ void decoder_tilde_dsp(t_decoder_tilde *x, t_signal **sp) {
         signal_setmultiout(&sp[i], 1);
     }
 
+    if (x->order < 1) {
+        ambi_dec_setBinauraliseLSflag(x->hAmbi, 1);
+    }
+
     if (ambi_dec_getProgressBar0_1(x->hAmbi) != 1 && ambi_dec_getProgressBar0_1(x->hAmbi) == 0) {
         // Initialize the ambisonic encoder
         ambi_dec_init(x->hAmbi, sys_getsr());
         logpost(x, 2, "[saf.decoder~] initializing decoder codec...");
         pthread_t initThread;
-        pthread_create(&initThread, NULL, decoder_tilde_initCoded, (void *)x);
+        pthread_create(&initThread, NULL, decoder_tilde_initcodec, (void *)x);
         pthread_detach(initThread);
     }
 
@@ -252,22 +262,26 @@ void *decoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     order = order < 0 ? 0 : order;
     num_loudspeakers = num_loudspeakers < 1 ? 1 : num_loudspeakers;
 
-    x->order = order;
+    x->order = (int)floor(sqrt(num_loudspeakers) - 1);
     x->nSH = (order + 1) * (order + 1);
     x->num_loudspeakers = num_loudspeakers;
+    if (x->order < 1) {
+        pd_error(x, "[saf.decoder~] Minimal order is 1 (requires at least 4 loudspeakers). "
+                    "Falling back to binaural mode.");
+    }
 
     ambi_dec_create(&x->hAmbi);
 
     // if (x->num_loudspeakers == 2) {
-    //     ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_STEREO);
+    //     ambi_dec_setoutputconfigpreset(x->hambi, loudspeaker_array_preset_stereo);
     // } else if (x->num_loudspeakers == 3) {
-    //     ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_STEREO);
+    //     ambi_dec_setoutputconfigpreset(x->hambi, loudspeaker_array_preset_stereo);
     // } else if (x->num_loudspeakers == 4) {
-    //     ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_4);
+    //     ambi_dec_setoutputconfigpreset(x->hambi, loudspeaker_array_preset_t_design_4);
     // } else if (x->num_loudspeakers == 5) {
-    //     ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_5PX);
+    //     ambi_dec_setoutputconfigpreset(x->hambi, loudspeaker_array_preset_5px);
     // } else if (x->num_loudspeakers == 22) {
-    //     ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_22PX);
+    //     ambi_dec_setoutputconfigpreset(x->hambi, loudspeaker_array_preset_22px);
     // }
 
     for (int i = 1; i < x->nSH; i++) {
@@ -286,15 +300,19 @@ void decoder_tilde_free(t_decoder_tilde *x) {
     if (x->ins) {
         for (int i = 0; i < x->nSH; i++) {
             freebytes(x->ins[i], x->ambiFrameSize * sizeof(t_sample));
+            freebytes(x->ins_tmp[i], x->ambiFrameSize * sizeof(t_sample));
         }
         freebytes(x->ins, x->nSH * sizeof(t_sample *));
+        freebytes(x->ins_tmp, x->nSH * sizeof(t_sample));
     }
 
     if (x->outs) {
         for (int i = 0; i < x->num_loudspeakers; i++) {
             freebytes(x->outs[i], x->ambiFrameSize * sizeof(t_sample));
+            freebytes(x->outs_tmp[i], x->ambiFrameSize * sizeof(t_sample));
         }
         freebytes(x->ins, x->num_loudspeakers * sizeof(t_sample *));
+        freebytes(x->outs_tmp, x->num_loudspeakers * sizeof(t_sample *));
     }
     ambi_dec_destroy(&x->hAmbi);
 }
