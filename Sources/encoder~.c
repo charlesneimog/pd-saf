@@ -1,11 +1,12 @@
 #include <ambi_enc.h>
 #include <m_pd.h>
+#include <math.h> // Para sqrt() e floor()
 #include <string.h>
 
 static t_class *encoder_tilde_class;
 
 // ─────────────────────────────────────
-typedef struct _binaural_tilde {
+typedef struct _saf {
     t_object obj;
     void *hAmbi;
     t_sample sample;
@@ -39,19 +40,13 @@ static void encoder_tilde_set(t_encoder_tilde *x, t_symbol *s, int argc, t_atom 
         } else {
             ambi_enc_setUnSolo(x->hAmbi);
         }
-        // } else if (strcmp(method, "input_config") == 0) {
-        //     int presetID = atom_getint(argv + 1);
-        //     ambi_enc_setInputConfigPreset(x->hAmbi, presetID);
-    } else if (strcmp(method, "ch_order") == 0) {
-        int newOrder = atom_getint(argv + 1);
-        ambi_enc_setChOrder(x->hAmbi, newOrder);
     } else if (strcmp(method, "norm_type") == 0) {
         int newType = atom_getint(argv + 1);
         if (newType < 1 || newType > 3) {
             logpost(x, 1, "[saf.encoder~] norm_type must be 1-3");
             logpost(x, 2, "               N3D  = 1");
-            logpost(x, 2, "               SN3D = 1");
-            logpost(x, 2, "               FUMA = 1");
+            logpost(x, 2, "               SN3D = 2");
+            logpost(x, 2, "               FUMA = 3");
             return;
         }
 
@@ -139,6 +134,13 @@ void encoder_tilde_dsp(t_encoder_tilde *x, t_signal **sp) {
 
     // Initialize the ambisonic encoder
     ambi_enc_init(x->hAmbi, sys_getsr());
+    ambi_enc_setOutputOrder(x->hAmbi, (SH_ORDERS)x->order);
+    ambi_enc_setNumSources(x->hAmbi, x->num_sources);
+    if (ambi_enc_getNSHrequired(x->hAmbi) < x->nSH) {
+        pd_error(x, "[saf.encoder~] Number of output signals is too low for the %d order.",
+                 x->order);
+        return;
+    }
 
     // Setup multi-out signals
     for (int i = x->num_sources; i < sum; i++) {
@@ -183,8 +185,13 @@ void *encoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     t_encoder_tilde *x = (t_encoder_tilde *)pd_new(encoder_tilde_class);
     int order = (argc >= 1) ? atom_getint(argv) : 1;
     int num_sources = (argc >= 2) ? atom_getint(argv + 1) : 1;
+    if (argc != 2) {
+        pd_error(x, "[saf.encoder~] Wrong number of arguments, use [saf.encoder~ <speakers_count> "
+                    "<sources>");
+        return NULL;
+    }
 
-    order = order < 0 ? 0 : order;
+    order = order < 1 ? 1 : order;
     num_sources = num_sources < 1 ? 1 : num_sources;
 
     ambi_enc_create(&x->hAmbi);

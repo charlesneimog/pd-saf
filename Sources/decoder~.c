@@ -28,6 +28,16 @@ typedef struct _decoder_tilde {
     int outputIndex;
 } t_decoder_tilde;
 
+// ─────────────────────────────────────
+void *decoder_tilde_initCoded(void *x_void) {
+    t_decoder_tilde *x = (t_decoder_tilde *)x_void;
+    ambi_dec_initCodec(x->hAmbi);
+    logpost(x, 3, "[saf.decoder~] codec initialized!");
+
+    logpost(x, 2, "[saf.decoder~] decoder codec initialized!");
+    return NULL;
+}
+
 // ╭─────────────────────────────────────╮
 // │               Methods               │
 // ╰─────────────────────────────────────╯
@@ -49,11 +59,66 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
         t_float binaural = atom_getfloat(argv + 1);
         ambi_dec_setBinauraliseLSflag(x->hAmbi, binaural);
         ambi_dec_initCodec(x->hAmbi);
+        logpost(x, 2, "[saf.decoder~] reinit decoder codec...");
     } else if (strcmp(method, "defaultHRIR") == 0) {
         t_float defaultHRIR = atom_getfloat(argv + 1);
         ambi_dec_setUseDefaultHRIRsflag(x->hAmbi, defaultHRIR);
         ambi_dec_initCodec(x->hAmbi);
+    } else if (strcmp(method, "masterDecOrder") == 0) {
+        int order = atom_getint(argv + 1);
+        ambi_dec_setMasterDecOrder(x->hAmbi, order);
+    } else if (strcmp(method, "order") == 0) {
+        int order = atom_getint(argv + 1);
+        int bandIdx = atom_getint(argv + 2);
+        ambi_dec_setDecOrder(x->hAmbi, order, bandIdx);
+    } else if (strcmp(method, "orderallbands") == 0) {
+        int order = atom_getint(argv + 1);
+        ambi_dec_setDecOrderAllBands(x->hAmbi, order);
+    } else if (strcmp(method, "loudspeakerpos") == 0) {
+        int index = atom_getint(argv + 1);
+        float azi = atom_getfloat(argv + 2);
+        float elev = atom_getfloat(argv + 3);
+        ambi_dec_setLoudspeakerAzi_deg(x->hAmbi, index, azi);
+        ambi_dec_setLoudspeakerElev_deg(x->hAmbi, index, elev);
+    } else if (strcmp(method, "hrirpreproc") == 0) {
+        int state = atom_getint(argv + 1);
+        ambi_dec_setEnableHRIRsPreProc(x->hAmbi, state);
+    } else if (strcmp(method, "sourcepreset") == 0) {
+        int preset = atom_getint(argv + 1);
+        ambi_dec_setSourcePreset(x->hAmbi, preset);
+    } else if (strcmp(method, "outconfigpreset") == 0) {
+        int preset = atom_getint(argv + 1);
+        ambi_dec_setOutputConfigPreset(x->hAmbi, preset);
+    } else if (strcmp(method, "chorder") == 0) {
+        int order = atom_getint(argv + 1);
+        ambi_dec_setChOrder(x->hAmbi, order);
+    } else if (strcmp(method, "normtype") == 0) {
+        int type = atom_getint(argv + 1);
+        ambi_dec_setNormType(x->hAmbi, type);
+    } else if (strcmp(method, "decMethod") == 0) {
+        int index = atom_getint(argv + 1);
+        int id = atom_getint(argv + 2);
+        ambi_dec_setDecMethod(x->hAmbi, index, id);
+    } else if (strcmp(method, "decenablemaxre") == 0) {
+        int index = atom_getint(argv + 1);
+        int id = atom_getint(argv + 2);
+        ambi_dec_setDecEnableMaxrE(x->hAmbi, index, id);
+    } else if (strcmp(method, "normtype") == 0) {
+        int index = atom_getint(argv + 1);
+        int id = atom_getint(argv + 2);
+        ambi_dec_setDecNormType(x->hAmbi, index, id);
+    } else if (strcmp(method, "transitionfreq") == 0) {
+        float freq = atom_getfloat(argv + 1);
+        ambi_dec_setTransitionFreq(x->hAmbi, freq);
+    } else {
+        pd_error(x->glist, "[saf.decoder~] Unknown set method: %s", method);
+        return;
     }
+    ambi_dec_refreshSettings(x->hAmbi);
+
+    pthread_t initThread;
+    pthread_create(&initThread, NULL, decoder_tilde_initCoded, (void *)x);
+    pthread_detach(initThread);
 }
 
 // ╭─────────────────────────────────────╮
@@ -105,18 +170,6 @@ t_int *decoder_tilde_perform(t_int *w) {
 }
 
 // ─────────────────────────────────────
-void *decoder_tilde_initCoded(void *x_void) {
-    t_decoder_tilde *x = (t_decoder_tilde *)x_void;
-    ambi_dec_initCodec(x->hAmbi);
-
-    // Initialize the ambisonic encoder
-    ambi_dec_init(x->hAmbi, sys_getsr());
-
-    logpost(x, 2, "[saf.decoder~] decoder codec initialized!");
-    return NULL;
-}
-
-// ─────────────────────────────────────
 void decoder_tilde_dsp(t_decoder_tilde *x, t_signal **sp) {
     // This is a mess. ambi_enc_getFrameSize has fixed frameSize, for encoder is 64 for
     // decoder is 128. In the perform method somethimes I need to accumulate samples sometimes I
@@ -141,6 +194,8 @@ void decoder_tilde_dsp(t_decoder_tilde *x, t_signal **sp) {
     }
 
     if (ambi_dec_getProgressBar0_1(x->hAmbi) != 1 && ambi_dec_getProgressBar0_1(x->hAmbi) == 0) {
+        // Initialize the ambisonic encoder
+        ambi_dec_init(x->hAmbi, sys_getsr());
         logpost(x, 2, "[saf.decoder~] initializing decoder codec...");
         pthread_t initThread;
         pthread_create(&initThread, NULL, decoder_tilde_initCoded, (void *)x);
