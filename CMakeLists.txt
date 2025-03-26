@@ -61,7 +61,6 @@ endif()
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │
 # ╰──────────────────────────────────────╯
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Sources/common/")
 
 file(
   GLOB
@@ -81,7 +80,7 @@ else()
     LINK_LIBRARIES openblas)
 endif()
 
-# ─────────────────────────────────────
+# ──────────────────────────────────────
 file(
   GLOB
   DECODER_TILDE_SOURCE
@@ -100,8 +99,19 @@ else()
 endif()
 
 # ─────────────────────────────────────
-# file( GLOB BINAURAL_TILDE_SOURCE
-# "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_bin/*.c"
-# ) pd_add_external( saf.binaural~
-# "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binaural~.c;${BINAURAL_TILDE_SOURCE}"
-# LINK_LIBRARIES openblas lapacke_static saf)
+file(
+  GLOB
+  BINAURAL_TILDE_SOURCE
+  "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_bin/*.c"
+)
+if(NOT APPLE)
+  pd_add_external(
+    saf.binaural~
+    "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binaural~.c;${BINAURAL_TILDE_SOURCE}"
+    LINK_LIBRARIES openblas lapacke_static saf)
+else()
+  pd_add_external(
+    saf.binaural~
+    "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binaural~.c;${BINAURAL_TILDE_SOURCE}"
+    LINK_LIBRARIES saf)
+endif()
