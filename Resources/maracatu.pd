@@ -1,0 +1,10 @@
+#N canvas 963 23 951 1016 10;
+#N canvas 0 50 450 250 (subpatch) 0;
+#X array maracatu 135520 float 4;
+#X coords 0 1 135519 -1 111 41 1 0 0;
+#X restore 9 17 graph;
+#X obj 16 131 soundfiler;
+#X obj 13 69 loadbang;
+#X msg 16 93 read -resize som.wav maracatu;
+#X connect 2 0 3 0;
+#X connect 3 0 1 0;
