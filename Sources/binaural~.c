@@ -9,8 +9,10 @@ static t_class *binaural_tilde_class;
 // ─────────────────────────────────────
 typedef struct _binaural_tilde {
     t_object obj;
-    void *hAmbi;
+    t_canvas *glist;
     t_sample sample;
+
+    void *hAmbi;
 
     t_sample **ins;
     t_sample **outs;
@@ -29,31 +31,131 @@ typedef struct _binaural_tilde {
 } t_binaural_tilde;
 
 // ─────────────────────────────────────
-void binaural_tilde_yaw(t_binaural_tilde *x, t_floatarg yaw) {
-    //
-    ambi_bin_setYaw(x->hAmbi, yaw);
+void *binaural_tilde_initcodec(void *x_void) {
+    t_binaural_tilde *x = (t_binaural_tilde *)x_void;
+    ambi_bin_initCodec(x->hAmbi);
+    logpost(x, 2, "[saf.binaural~] binaural codec initialized!");
+    return NULL;
 }
 
-// ─────────────────────────────────────
-void binaural_tilde_pitch(t_binaural_tilde *x, t_floatarg pitch) {
-    ambi_bin_setPitch(x->hAmbi, pitch);
-}
+// ╭─────────────────────────────────────╮
+// │               Methods               │
+// ╰─────────────────────────────────────╯
+static void binaural_tilde_set(t_binaural_tilde *x, t_symbol *s, int argc, t_atom *argv) {
+    const char *method = atom_getsymbol(argv)->s_name;
 
-// ─────────────────────────────────────
-void binaural_tilde_roll(t_binaural_tilde *x, t_floatarg roll) {
-    //
-    ambi_bin_setRoll(x->hAmbi, roll);
+    if (strcmp(method, "sofafile") == 0) {
+        char path[MAXPDSTRING];
+        char *bufptr;
+        t_symbol *sofa_path = atom_getsymbol(argv + 1);
+        int fd = canvas_open(x->glist, sofa_path->s_name, "", path, &bufptr, MAXPDSTRING, 1);
+        if (fd > 1) {
+            char completpath[MAXPDSTRING];
+            snprintf(completpath, MAXPDSTRING, "%s/%s", path, sofa_path->s_name);
+            logpost(x, 2, "[saf.binaural~] Opening %s", completpath);
+            ambi_bin_setSofaFilePath(x->hAmbi, completpath);
+        } else {
+            pd_error(x->glist, "[saf.binaural~] Could not open sofa file!");
+        }
+    } else if (strcmp(method, "usedefaulthrirs") == 0) {
+        t_float useDefault = atom_getfloat(argv + 1);
+        ambi_bin_setUseDefaultHRIRsflag(x->hAmbi, useDefault);
+    } else if (strcmp(method, "inputorderpreset") == 0) {
+        SH_ORDERS orderPreset = (SH_ORDERS)atom_getint(argv + 1);
+        ambi_bin_setInputOrderPreset(x->hAmbi, orderPreset);
+    } else if (strcmp(method, "decodingmethod") == 0) {
+        AMBI_BIN_DECODING_METHODS decodingMethod = (AMBI_BIN_DECODING_METHODS)atom_getint(argv + 1);
+        if (decodingMethod > 4 && decodingMethod < 1) {
+            logpost(x, 2, "[saf.binaural~] Invalid decoding method!");
+            logpost(x, 2, "    1: Least-squares (LS) decoder");
+            logpost(x, 2,
+                    "    2: least-squares (ls) decoder with diffuse-field spectral equalisation");
+            logpost(x, 2, "    3: Time-alignment (TA) (default)");
+            logpost(x, 2, "    4: Magnitude least-squares decoder (MagLS)");
+        }
+
+        ambi_bin_setDecodingMethod(x->hAmbi, decodingMethod);
+    } else if (strcmp(method, "chorder") == 0) {
+        int chOrder = atom_getint(argv + 1);
+        // HOA_CH_ORDER_ACN,  /**< Ambisonic Channel numbering (ACN) convention, which
+        //                     *   is employed by all spherical harmonic related
+        //                     *   functions in SAF */
+        // HOA_CH_ORDER_FUMA  /**< Furse-Malham (FuMa) convention, often used by older
+        //                     *   recordings. The convention follows the WXYZ ordering
+        //                     *   of the omni and dipoles, and is suitable only for
+        //                     *   1st order. */
+
+        ambi_bin_setChOrder(x->hAmbi, chOrder);
+    } else if (strcmp(method, "normtype") == 0) {
+        /**
+         * Available Ambisonic normalisation conventions
+         *
+         * @warning NORM_FUMA is only supported for first order input! It also  has the
+         *          1/sqrt(2) scaling term applied to the omni.
+         */
+        // typedef enum {
+        //     NORM_N3D = 1, /**< orthonormalised (N3D) */
+        //     NORM_SN3D,    /**< Schmidt semi-normalisation (SN3D) */
+        //     NORM_FUMA     /**< (Legacy) Furse-Malham scaling */
+        //
+        // } NORM_TYPES;
+
+        int normType = atom_getint(argv + 1);
+        ambi_bin_setNormType(x->hAmbi, normType);
+    } else if (strcmp(method, "enablemaxre") == 0) {
+        int enableMaxRE = atom_getint(argv + 1);
+        ambi_bin_setEnableMaxRE(x->hAmbi, enableMaxRE);
+    } else if (strcmp(method, "enablediffusematching") == 0) {
+        int enableDiffuse = atom_getint(argv + 1);
+        ambi_bin_setEnableDiffuseMatching(x->hAmbi, enableDiffuse);
+    } else if (strcmp(method, "enabletruncationeq") == 0) {
+        int enableTruncation = atom_getint(argv + 1);
+        ambi_bin_setEnableTruncationEQ(x->hAmbi, enableTruncation);
+    } else if (strcmp(method, "hrirspreproc") == 0) {
+        AMBI_BIN_PREPROC preProcType = (AMBI_BIN_PREPROC)atom_getint(argv + 1);
+        ambi_bin_setHRIRsPreProc(x->hAmbi, preProcType);
+    } else if (strcmp(method, "enablerotation") == 0) {
+        int enableRotation = atom_getint(argv + 1);
+        ambi_bin_setEnableRotation(x->hAmbi, enableRotation);
+    } else if (strcmp(method, "yaw") == 0) {
+        float yaw = atom_getfloat(argv + 1);
+        ambi_bin_setYaw(x->hAmbi, yaw);
+    } else if (strcmp(method, "pitch") == 0) {
+        float pitch = atom_getfloat(argv + 1);
+        ambi_bin_setPitch(x->hAmbi, pitch);
+    } else if (strcmp(method, "roll") == 0) {
+        float roll = atom_getfloat(argv + 1);
+        ambi_bin_setRoll(x->hAmbi, roll);
+    } else if (strcmp(method, "flipyaw") == 0) {
+        int flipYaw = atom_getint(argv + 1);
+        ambi_bin_setFlipYaw(x->hAmbi, flipYaw);
+    } else if (strcmp(method, "flippitch") == 0) {
+        int flipPitch = atom_getint(argv + 1);
+        ambi_bin_setFlipPitch(x->hAmbi, flipPitch);
+    } else if (strcmp(method, "fliproll") == 0) {
+        int flipRoll = atom_getint(argv + 1);
+        ambi_bin_setFlipRoll(x->hAmbi, flipRoll);
+    } else if (strcmp(method, "rpyflag") == 0) {
+        int rpyFlag = atom_getint(argv + 1);
+        ambi_bin_setRPYflag(x->hAmbi, rpyFlag);
+    } else {
+        pd_error(x, "[saf.binaural~] Unknown set method: %s", method);
+    }
 }
 
 // ─────────────────────────────────────
 t_int *binaural_tilde_perform(t_int *w) {
     t_binaural_tilde *x = (t_binaural_tilde *)(w[1]);
+    int n = (int)(w[2]);
     int init = ambi_bin_getProgressBar0_1(x->hAmbi);
-    if (ambi_bin_getProgressBar0_1(x->hAmbi) != 1) {
+    if (init != 1) {
+        for (int ch = 0; ch < x->num_loudspeakers; ch++) {
+            t_sample *out = (t_sample *)(w[3 + x->nSH + ch]);
+            memset(out, 0, n * sizeof(t_sample));
+        }
         return (w + 3 + x->nSH + x->num_loudspeakers);
     }
 
-    int n = (int)(w[2]);
     if (n <= x->ambiFrameSize) {
         // Accumulate input samples
         for (int ch = 0; ch < x->nSH; ch++) {
@@ -96,27 +198,12 @@ t_int *binaural_tilde_perform(t_int *w) {
 }
 
 // ─────────────────────────────────────
-void *binaural_tilde_initCoded(void *x_void) {
-    t_binaural_tilde *x = (t_binaural_tilde *)x_void;
-    ambi_bin_initCodec(x->hAmbi);
-
-    // Initialize the ambisonic encoder
-    ambi_bin_init(x->hAmbi, sys_getsr());
-    ambi_bin_setNormType(x->hAmbi, NORM_SN3D);
-    ambi_bin_setEnableRotation(x->hAmbi, 1);
-    ambi_bin_setPitch(x->hAmbi, 0);
-    ambi_bin_setYaw(x->hAmbi, 0);
-    ambi_bin_setRoll(x->hAmbi, 0);
-    logpost(x, 2, "[saf.binaural~] binaural codec initialized!");
-    return NULL;
-}
-
-// ─────────────────────────────────────
 void binaural_tilde_dsp(t_binaural_tilde *x, t_signal **sp) {
-    // This is a mess. ambi_enc_getFrameSize has fixed frameSize, for encoder is 64 for
-    // decoder is 128. In the perform method somethimes I need to accumulate samples sometimes I
-    // need to process 2 or more times to avoid change how ambi_enc_ works. I think that in this way
-    // is more safe, once that this functions are tested in the main repo. But maybe worse to
+    // This is a mess. ambi_enc_getFrameSize has fixed frameSize, for encoder is
+    // 64 for decoder is 128. In the perform method somethimes I need to
+    // accumulate samples sometimes I need to process 2 or more times to avoid
+    // change how ambi_enc_ works. I think that in this way is more safe, once
+    // that this functions are tested in the main repo. But maybe worse to
     // implement the own set of functions.
 
     // Set frame sizes and reset indices
@@ -130,9 +217,11 @@ void binaural_tilde_dsp(t_binaural_tilde *x, t_signal **sp) {
 
     // call another thread here
     if (ambi_bin_getProgressBar0_1(x->hAmbi) != 1 && ambi_bin_getProgressBar0_1(x->hAmbi) == 0) {
+
+        ambi_bin_init(x->hAmbi, sys_getsr());
         logpost(x, 2, "[saf.binaural~] initializing binaural codec...");
         pthread_t initThread;
-        pthread_create(&initThread, NULL, binaural_tilde_initCoded, (void *)x);
+        pthread_create(&initThread, NULL, binaural_tilde_initcodec, (void *)x);
         pthread_detach(initThread);
     }
 
@@ -150,7 +239,8 @@ void binaural_tilde_dsp(t_binaural_tilde *x, t_signal **sp) {
     // Allocate arrays for input and output
     x->ins = (t_sample **)getbytes(x->nSH * sizeof(t_sample *));
     x->outs = (t_sample **)getbytes(x->num_loudspeakers * sizeof(t_sample *));
-    // IMPORTANT: Allocate ins_tmp based on num_sources (not nSH) to match processing below.
+    // IMPORTANT: Allocate ins_tmp based on num_sources (not nSH) to match
+    // processing below.
     x->ins_tmp = (t_sample **)getbytes(x->nSH * sizeof(t_sample *));
     x->outs_tmp = (t_sample **)getbytes(x->num_loudspeakers * sizeof(t_sample *));
 
@@ -177,6 +267,7 @@ void binaural_tilde_dsp(t_binaural_tilde *x, t_signal **sp) {
 // ─────────────────────────────────────
 void *binaural_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     t_binaural_tilde *x = (t_binaural_tilde *)pd_new(binaural_tilde_class);
+    x->glist = canvas_getcurrent();
     int order = 1;
     int num_loudspeakers = 2;
 
@@ -240,9 +331,5 @@ void setup_saf0x2ebinaural_tilde(void) {
 
     CLASS_MAINSIGNALIN(binaural_tilde_class, t_binaural_tilde, sample);
     class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_dsp, gensym("dsp"), A_CANT, 0);
-    class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_yaw, gensym("yaw"), A_FLOAT, 0);
-    class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_pitch, gensym("pitch"), A_FLOAT,
-                    0);
-    class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_roll, gensym("roll"), A_FLOAT,
-                    0);
+    class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("set"), A_GIMME, 0);
 }
