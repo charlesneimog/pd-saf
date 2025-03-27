@@ -110,7 +110,7 @@ t_int *roomsim_tilde_perform(t_int *w) {
         x->accumSize += n;
         // Process only when we have a full ambisonic frame
         if (x->accumSize == x->ambiFrameSize) {
-            ambi_roomsim_process(x->hAmbi, (const float *const *)x->ins, x->outs, x->num_sources,
+            ambi_roomsim_process(x->hAmbi, (const float *const *)x->ins, (float **)x->outs, x->num_sources,
                                  x->nSH, x->ambiFrameSize);
             x->accumSize = 0;
             x->outputIndex = 0;

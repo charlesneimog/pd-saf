@@ -148,7 +148,7 @@ t_int *decoder_tilde_perform(t_int *w) {
         x->accumSize += n;
         // Process only when we have a full ambisonic frame
         if (x->accumSize == x->ambiFrameSize) {
-            ambi_dec_process(x->hAmbi, (const float *const *)x->ins, x->outs, x->nSH,
+            ambi_dec_process(x->hAmbi, (const float *const *)x->ins, (float **)x->outs, x->nSH,
                              x->num_loudspeakers, x->ambiFrameSize);
             x->accumSize = 0;
             x->outputIndex = 0;
@@ -168,7 +168,7 @@ t_int *decoder_tilde_perform(t_int *w) {
                 memcpy(x->ins_tmp[ch], (t_sample *)w[3 + ch] + (chunkIndex * x->ambiFrameSize),
                        x->ambiFrameSize * sizeof(t_sample));
             }
-            ambi_dec_process(x->hAmbi, (const float *const *)x->ins_tmp, x->outs_tmp, x->nSH,
+            ambi_dec_process(x->hAmbi, (const float *const *)x->ins_tmp, (float **)x->outs_tmp, x->nSH,
                              x->num_loudspeakers, x->ambiFrameSize);
             for (int ch = 0; ch < x->num_loudspeakers; ch++) {
                 t_sample *out = (t_sample *)(w[3 + x->nSH + ch]);
