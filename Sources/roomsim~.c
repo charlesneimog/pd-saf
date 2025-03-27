@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include <ambi_roomsim.h>
+#include "utilities.h"
 
 static t_class *roomsim_tilde_class;
 
@@ -36,13 +37,8 @@ typedef struct _roomsim_tilde {
 static void roomsim_tilde_set(t_roomsim_tilde *x, t_symbol *s, int argc, t_atom *argv) {
     const char *method = atom_getsymbol(argv)->s_name;
 
-    if (strcmp(method, "enableims") == 0) {
-        int enableIMS = atom_getint(argv + 1);
-        ambi_roomsim_setEnableIMSflag(x->hAmbi, enableIMS);
-    } else if (strcmp(method, "maxreflectionorder") == 0) {
-        int maxReflectionOrder = atom_getint(argv + 1);
-        ambi_roomsim_setMaxReflectionOrder(x->hAmbi, maxReflectionOrder);
-    } else if (strcmp(method, "sourcex") == 0) {
+    // Positions
+    if (strcmp(method, "sourcex") == 0) {
         int index = atom_getint(argv + 1) - 1;
         float xCoord = atom_getfloat(argv + 2);
         ambi_roomsim_setSourceX(x->hAmbi, index, xCoord);
@@ -54,10 +50,17 @@ static void roomsim_tilde_set(t_roomsim_tilde *x, t_symbol *s, int argc, t_atom 
         int index = atom_getint(argv + 1) - 1;
         float zCoord = atom_getfloat(argv + 2);
         ambi_roomsim_setSourceZ(x->hAmbi, index, zCoord);
-    } else if (strcmp(method, "numreceivers") == 0) {
-        int numReceivers = atom_getint(argv + 1);
-        ambi_roomsim_setNumReceivers(x->hAmbi, numReceivers);
-    } else if (strcmp(method, "receiverx") == 0) {
+    } else if (strcmp(method, "source") == 0) {
+        float index = atom_getfloat(argv + 1) - 1;
+        float pos_x = atom_getfloat(argv + 2);
+        float pos_y = atom_getfloat(argv + 3);
+        float pos_z = atom_getfloat(argv + 4);
+        ambi_roomsim_setSourceX(x->hAmbi, index, pos_x);
+        ambi_roomsim_setSourceY(x->hAmbi, index, pos_y);
+        ambi_roomsim_setSourceZ(x->hAmbi, index, pos_z);
+    }
+
+    else if (strcmp(method, "receiverx") == 0) {
         int index = atom_getint(argv + 1) - 1;
         float xCoord = atom_getfloat(argv + 2);
         ambi_roomsim_setReceiverX(x->hAmbi, index, xCoord);
@@ -69,7 +72,17 @@ static void roomsim_tilde_set(t_roomsim_tilde *x, t_symbol *s, int argc, t_atom 
         int index = atom_getint(argv + 1) - 1;
         float zCoord = atom_getfloat(argv + 2);
         ambi_roomsim_setReceiverZ(x->hAmbi, index, zCoord);
-    } else if (strcmp(method, "roomdimx") == 0) {
+    } else if (strcmp(method, "receiver") == 0) {
+        float index = atom_getfloat(argv + 1) - 1;
+        float pos_x = atom_getfloat(argv + 2);
+        float pos_y = atom_getfloat(argv + 3);
+        float pos_z = atom_getfloat(argv + 4);
+        ambi_roomsim_setReceiverX(x->hAmbi, index, pos_x);
+        ambi_roomsim_setReceiverY(x->hAmbi, index, pos_y);
+        ambi_roomsim_setReceiverZ(x->hAmbi, index, pos_z);
+    }
+
+    else if (strcmp(method, "roomdimx") == 0) {
         float roomDimX = atom_getfloat(argv + 1) - 1;
         ambi_roomsim_setRoomDimX(x->hAmbi, roomDimX);
     } else if (strcmp(method, "roomdimy") == 0) {
@@ -78,11 +91,53 @@ static void roomsim_tilde_set(t_roomsim_tilde *x, t_symbol *s, int argc, t_atom 
     } else if (strcmp(method, "roomdimz") == 0) {
         float roomDimZ = atom_getfloat(argv + 1) - 1;
         ambi_roomsim_setRoomDimZ(x->hAmbi, roomDimZ);
+    } else if (strcmp(method, "room") == 0) {
+        // set room  <x> <y> <z>
+        float pos_x = atom_getfloat(argv + 1);
+        float pos_y = atom_getfloat(argv + 2);
+        float pos_z = atom_getfloat(argv + 3);
+        ambi_roomsim_setRoomDimX(x->hAmbi, pos_x);
+        ambi_roomsim_setRoomDimY(x->hAmbi, pos_y);
+        ambi_roomsim_setRoomDimZ(x->hAmbi, pos_z);
+    }
+
+    // Config
+    else if (strcmp(method, "numreceivers") == 0) {
+        int numReceivers = atom_getint(argv + 1);
+        ambi_roomsim_setNumReceivers(x->hAmbi, numReceivers);
+    } else if (strcmp(method, "enableims") == 0) {
+        // IMS significa Image Source Method, um método utilizado para simular reflexões precoces no
+        // som.
+        int enableIMS = atom_getint(argv + 1);
+    } else if (strcmp(method, "maxreflectionorder") == 0) {
+        int maxReflectionOrder = atom_getint(argv + 1);
+        pd_assert(x, maxReflectionOrder < 7,
+                  "[saf.roomsim~] Numbers higher then 7 is a very high reflection order");
+        ambi_roomsim_setMaxReflectionOrder(x->hAmbi, maxReflectionOrder);
     } else if (strcmp(method, "wallabscoeff") == 0) {
-        int xyz_idx = atom_getint(argv + 1);
-        int posNeg_idx = atom_getint(argv + 2);
-        float absCoeff = atom_getfloat(argv + 3);
-        ambi_roomsim_setWallAbsCoeff(x->hAmbi, xyz_idx, posNeg_idx, absCoeff);
+        // set ambi_roomsim_setWallAbsCoeff
+        // set wallabscoeff <+x> <-x> <+y> <-y> <+z> <-z>
+        float coeffx_plus = atom_getfloat(argv + 1);
+        float coeffx_minus = atom_getfloat(argv + 2);
+        float coeffy_plus = atom_getfloat(argv + 3);
+        float coeffy_minus = atom_getfloat(argv + 4);
+        float coeffz_plus = atom_getfloat(argv + 5);
+        float coeffz_minus = atom_getfloat(argv + 6);
+
+        pd_assert(x, coeffx_plus >= 0, "[saf.roomsim~] First value must be positive or 0");
+        pd_assert(x, coeffx_minus < 0, "[saf.roomsim~] Second value must be negative");
+        pd_assert(x, coeffy_plus >= 0, "[saf.roomsim~] Third value must be positive or 0");
+        pd_assert(x, coeffy_minus < 0, "[saf.roomsim~] Fourth value must be negative");
+        pd_assert(x, coeffz_plus >= 0, "[saf.roomsim~] Fifth value must be positive or 0");
+        pd_assert(x, coeffz_minus < 0, "[saf.roomsim~] Sixth value must be negative");
+
+        ambi_roomsim_setWallAbsCoeff(x->hAmbi, 0, 0, coeffx_plus);
+        ambi_roomsim_setWallAbsCoeff(x->hAmbi, 0, 1, coeffx_minus);
+        ambi_roomsim_setWallAbsCoeff(x->hAmbi, 1, 0, coeffy_plus);
+        ambi_roomsim_setWallAbsCoeff(x->hAmbi, 1, 1, coeffy_minus);
+        ambi_roomsim_setWallAbsCoeff(x->hAmbi, 2, 0, coeffz_plus);
+        ambi_roomsim_setWallAbsCoeff(x->hAmbi, 2, 1, coeffz_minus);
+
     } else if (strcmp(method, "chorder") == 0) {
         int chOrder = atom_getint(argv + 1);
         ambi_roomsim_setChOrder(x->hAmbi, chOrder);
@@ -110,8 +165,8 @@ t_int *roomsim_tilde_perform(t_int *w) {
         x->accumSize += n;
         // Process only when we have a full ambisonic frame
         if (x->accumSize == x->ambiFrameSize) {
-            ambi_roomsim_process(x->hAmbi, (const float *const *)x->ins, (float* const*)x->outs, x->num_sources,
-                                 x->nSH, x->ambiFrameSize);
+            ambi_roomsim_process(x->hAmbi, (const float *const *)x->ins, (float *const *)x->outs,
+                                 x->num_sources, x->nSH, x->ambiFrameSize);
             x->accumSize = 0;
             x->outputIndex = 0;
         }
@@ -130,8 +185,9 @@ t_int *roomsim_tilde_perform(t_int *w) {
                 memcpy(x->ins_tmp[ch], (t_sample *)w[3 + ch] + (chunkIndex * x->ambiFrameSize),
                        x->ambiFrameSize * sizeof(t_sample));
             }
-            ambi_roomsim_process(x->hAmbi, (const float *const *)x->ins_tmp, (float* const*)x->outs_tmp,
-                                 x->num_sources, x->nSH, x->ambiFrameSize);
+            ambi_roomsim_process(x->hAmbi, (const float *const *)x->ins_tmp,
+                                 (float *const *)x->outs_tmp, x->num_sources, x->nSH,
+                                 x->ambiFrameSize);
             for (int ch = 0; ch < x->nSH; ch++) {
                 t_sample *out = (t_sample *)(w[3 + x->num_sources + ch]);
                 memcpy(out + (chunkIndex * x->ambiFrameSize), x->outs_tmp[ch],
