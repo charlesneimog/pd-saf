@@ -85,8 +85,8 @@ t_int *encoder_tilde_perform(t_int *w) {
         }
         x->accumSize += n;
         if (x->accumSize == x->ambiFrameSize) {
-            ambi_enc_process(x->hAmbi, (const float *const *)x->ins, (float* const*)x->outs, x->num_sources,
-                             x->nSH, x->ambiFrameSize);
+            ambi_enc_process(x->hAmbi, (const float *const *)x->ins, (float *const *)x->outs,
+                             x->num_sources, x->nSH, x->ambiFrameSize);
             x->accumSize = 0;
             x->outputIndex = 0;
         }
@@ -102,8 +102,8 @@ t_int *encoder_tilde_perform(t_int *w) {
                 memcpy(x->ins_tmp[ch], (t_sample *)w[3 + ch] + (chunkIndex * x->ambiFrameSize),
                        x->ambiFrameSize * sizeof(t_sample));
             }
-            ambi_enc_process(x->hAmbi, (const float *const *)x->ins_tmp, (float* const*)x->outs_tmp,
-                             x->num_sources, x->nSH, x->ambiFrameSize);
+            ambi_enc_process(x->hAmbi, (const float *const *)x->ins_tmp,
+                             (float *const *)x->outs_tmp, x->num_sources, x->nSH, x->ambiFrameSize);
             for (int ch = 0; ch < x->nSH; ch++) {
                 t_sample *out = (t_sample *)(w[3 + x->num_sources + ch]);
                 memcpy(out + (chunkIndex * x->ambiFrameSize), x->outs_tmp[ch],
