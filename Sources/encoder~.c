@@ -1,15 +1,19 @@
-#include <ambi_enc.h>
-#include <m_pd.h>
-#include <math.h> // Para sqrt() e floor()
 #include <string.h>
+
+#include <m_pd.h>
+#include <g_canvas.h>
+
+#include <ambi_enc.h>
 
 static t_class *encoder_tilde_class;
 
 // ─────────────────────────────────────
 typedef struct _saf {
     t_object obj;
-    void *hAmbi;
     t_sample sample;
+
+    void *hAmbi;
+    unsigned ambi_init;
 
     t_sample **ins;
     t_sample **outs;
@@ -80,24 +84,20 @@ t_int *encoder_tilde_perform(t_int *w) {
             memcpy(x->ins[ch] + x->accumSize, (t_sample *)w[3 + ch], n * sizeof(t_sample));
         }
         x->accumSize += n;
-        // Process only when we have a full ambisonic frame
         if (x->accumSize == x->ambiFrameSize) {
             ambi_enc_process(x->hAmbi, (const float *const *)x->ins, x->outs, x->num_sources,
                              x->nSH, x->ambiFrameSize);
             x->accumSize = 0;
             x->outputIndex = 0;
         }
-        // Output the processed samples in blocks
         for (int ch = 0; ch < x->nSH; ch++) {
             t_sample *out = (t_sample *)(w[3 + x->num_sources + ch]);
             memcpy(out, x->outs[ch] + x->outputIndex, n * sizeof(t_sample));
         }
         x->outputIndex += n;
     } else {
-        // When n is greater than ambiFrameSize (e.g., frameSize=64 and n=128)
         int chunks = n / x->ambiFrameSize;
         for (int chunkIndex = 0; chunkIndex < chunks; chunkIndex++) {
-            // Process each full chunk separately
             for (int ch = 0; ch < x->num_sources; ch++) {
                 memcpy(x->ins_tmp[ch], (t_sample *)w[3 + ch] + (chunkIndex * x->ambiFrameSize),
                        x->ambiFrameSize * sizeof(t_sample));
@@ -133,16 +133,19 @@ void encoder_tilde_dsp(t_encoder_tilde *x, t_signal **sp) {
     t_int *sigvec = getbytes(sigvecsize * sizeof(t_int));
 
     // Initialize the ambisonic encoder
-    ambi_enc_init(x->hAmbi, sys_getsr());
-    ambi_enc_setOutputOrder(x->hAmbi, (SH_ORDERS)x->order);
-    ambi_enc_setNumSources(x->hAmbi, x->num_sources);
-    if (ambi_enc_getNSHrequired(x->hAmbi) < x->nSH) {
-        pd_error(x, "[saf.encoder~] Number of output signals is too low for the %d order.",
-                 x->order);
-        return;
+    if (!x->ambi_init) {
+        ambi_enc_init(x->hAmbi, sys_getsr());
+        ambi_enc_setOutputOrder(x->hAmbi, (SH_ORDERS)x->order);
+        ambi_enc_setNumSources(x->hAmbi, x->num_sources);
+        if (ambi_enc_getNSHrequired(x->hAmbi) < x->nSH) {
+            pd_error(x, "[saf.encoder~] Number of output signals is too low for the %d order.",
+                     x->order);
+            return;
+        }
+        x->ambi_init = 1;
     }
 
-    // Setup multi-out signals
+    // TODO: Setup multi-out signals
     for (int i = x->num_sources; i < sum; i++) {
         signal_setmultiout(&sp[i], 1);
     }
@@ -153,10 +156,8 @@ void encoder_tilde_dsp(t_encoder_tilde *x, t_signal **sp) {
         sigvec[2 + i] = (t_int)sp[i]->s_vec;
     }
 
-    // Allocate arrays for input and output
     x->ins = (t_sample **)getbytes(x->num_sources * sizeof(t_sample *));
     x->outs = (t_sample **)getbytes(x->nSH * sizeof(t_sample *));
-    // IMPORTANT: Allocate ins_tmp based on num_sources (not nSH) to match processing below.
     x->ins_tmp = (t_sample **)getbytes(x->num_sources * sizeof(t_sample *));
     x->outs_tmp = (t_sample **)getbytes(x->nSH * sizeof(t_sample *));
 
@@ -193,6 +194,7 @@ void *encoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
 
     order = order < 1 ? 1 : order;
     num_sources = num_sources < 1 ? 1 : num_sources;
+    x->ambi_init = 0;
 
     ambi_enc_create(&x->hAmbi);
     x->order = order;
@@ -216,9 +218,21 @@ void encoder_tilde_free(t_encoder_tilde *x) {
     if (x->ins) {
         for (int i = 0; i < x->num_sources; i++) {
             freebytes(x->ins[i], x->ambiFrameSize * sizeof(t_sample));
+            freebytes(x->ins_tmp[i], x->ambiFrameSize * sizeof(t_sample));
         }
         freebytes(x->ins, x->num_sources * sizeof(t_sample *));
+        freebytes(x->ins_tmp, x->num_sources * sizeof(t_sample *));
     }
+
+    if (x->outs) {
+        for (int i = 0; i < x->nSH; i++) {
+            freebytes(x->outs[i], x->ambiFrameSize * sizeof(t_sample));
+            freebytes(x->outs_tmp[i], x->ambiFrameSize * sizeof(t_sample));
+        }
+        freebytes(x->outs, x->nSH * sizeof(t_sample *));
+        freebytes(x->outs_tmp, x->nSH * sizeof(t_sample *));
+    }
+
     ambi_enc_destroy(&x->hAmbi);
 }
 
@@ -227,6 +241,9 @@ void setup_saf0x2eencoder_tilde(void) {
     encoder_tilde_class = class_new(gensym("saf.encoder~"), (t_newmethod)encoder_tilde_new,
                                     (t_method)encoder_tilde_free, sizeof(t_encoder_tilde),
                                     CLASS_DEFAULT | CLASS_MULTICHANNEL, A_GIMME, 0);
+
+    logpost(NULL, 3, "[saf] is a pd version of Spatial Audio Framework by Leo McCormack");
+    logpost(NULL, 3, "[saf] pd-saf by Charles K. Neimog");
 
     CLASS_MAINSIGNALIN(encoder_tilde_class, t_encoder_tilde, sample);
     class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_dsp, gensym("dsp"), A_CANT, 0);

@@ -1,8 +1,12 @@
-#include <ambi_dec.h>
-#include <m_pd.h>
+#include <string.h>
 #include <math.h>
 #include <pthread.h>
-#include <string.h>
+
+#include <m_pd.h>
+#include <g_canvas.h>
+#include <s_stuff.h>
+
+#include <ambi_dec.h>
 
 static t_class *decoder_tilde_class;
 
@@ -48,8 +52,10 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
         t_symbol *sofa_path = atom_getsymbol(argv + 1);
         int fd = canvas_open(x->glist, sofa_path->s_name, "", path, &bufptr, MAXPDSTRING, 1);
         if (fd > 1) {
-            logpost(x, 2, "[saf.decoder~] Opening %s.", path);
-            ambi_dec_setSofaFilePath(x->hAmbi, sofa_path->s_name);
+            char completpath[MAXPDSTRING];
+            pd_snprintf(completpath, MAXPDSTRING, "%s/%s", path, sofa_path->s_name);
+            logpost(x, 2, "[saf.binaural~] Opening %s", completpath);
+            ambi_dec_setSofaFilePath(x->hAmbi, completpath);
         } else {
             pd_error(x->glist, "[saf.decoder~] Could not open sofa file!");
         }
