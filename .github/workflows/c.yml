@@ -25,9 +25,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt', '**/*.cpp', '**/*.h') }}
+          key: build-cache-${{ runner.os }}-${{ matrix.precision }}
           restore-keys: |
-            ${{ runner.os }}-build-
+            build-cache-${{ runner.os }}-
       - name: Install
         run: |
           brew install pd 
@@ -41,6 +41,12 @@ jobs:
         with:
           name: ${{env.LIBNAME}}-${{matrix.os}}-${{matrix.precision}}
           path: ${{env.LIBNAME}}
+      - name: Save cache
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-cache-${{ runner.os }}-${{ matrix.precision }}
+
   windows-build:
     runs-on: windows-latest
     strategy:
@@ -58,9 +64,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt', '**/*.cpp', '**/*.h') }}
+          key: build-cache-${{ runner.os }}-${{ matrix.precision }}
           restore-keys: |
-            ${{ runner.os }}-build-
+            build-cache-${{ runner.os }}-
       # ──────────────────────────────────────
       - if: matrix.compiler == 'msvc'
         name: Set up Visual Studio Build Tools
@@ -96,6 +102,11 @@ jobs:
         with:
           name: ${{env.LIBNAME}}-f${{ matrix.precision }}-windows-${{ matrix.compiler}}
           path: ${{env.LIBNAME}}
+      - name: Save cache
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-cache-${{ runner.os }}-${{ matrix.precision }}
   linux-build:
     runs-on: ubuntu-latest
     strategy:
@@ -111,9 +122,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build
-          key: ${{ runner.os }}-build-${{ hashFiles('**/CMakeLists.txt', '**/*.cpp', '**/*.h') }}
+          key: build-cache-${{ runner.os }}-${{ matrix.precision }}
           restore-keys: |
-            ${{ runner.os }}-build-
+            build-cache-${{ runner.os }}-
       - name: PureData Sources
         run: |
           sudo apt update
@@ -152,6 +163,12 @@ jobs:
         with:
           name: ${{ env.LIBNAME }}-linux-${{matrix.arch}}-${{matrix.precision}}
           path: ${{env.LIBNAME}}
+      - name: Save cache
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-cache-${{ runner.os }}-${{ matrix.precision }}
+
   # package-artifacts:
   #   needs: [macos-build, windows-build, linux-build]
   #   runs-on: ubuntu-latest

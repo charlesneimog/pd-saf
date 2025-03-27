@@ -18,21 +18,29 @@ include(${PDCMAKE_FILE})
 # ╭──────────────────────────────────────╮
 # │               OpenBLAS               │
 # ╰──────────────────────────────────────╯
-
-if(NOT APPLE AND NOT EXISTS "${OPENBLAS_LIBRARY}")
+if(NOT APPLE)
     set(BUILD_STATIC_LIBS ON)
     set(BUILD_WITHOUT_LAPACK OFF)
     set(BUILD_TESTING OFF)
     set(BUILD_LAPACK_DEPRECATED OFF)
+    set(C_LAPACK ON)
+    set(CBLAS OFF)
+
+    # Build OpenBLAS
     add_subdirectory(Libraries/OpenBLAS EXCLUDE_FROM_ALL)
+    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/OpenBLAS/lapack-netlib/CBLAS/include/")
 
-    # Build LAPACKE as a static library from the object library LAPACKE
-    set(OPENBLAS_LIBRARY "${CMAKE_BINARY_DIR}/Libraries/OpenBLAS/lib/libopenblas.a")
-    add_library(lapacke_static STATIC $<TARGET_OBJECTS:LAPACKE>)
-    set(LAPACKE_LIBRARY lapacke_static)
+    # can't figure how to generate this
+    set(CBLAS_MANGLING_HEADER "${CMAKE_CURRENT_BINARY_DIR}/cblas_mangling.h")
+    file(WRITE "${CBLAS_MANGLING_HEADER}" "")
+    include_directories("${CMAKE_CURRENT_BINARY_DIR}/")
+
+    # Build LAPACKE
     include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/OpenBLAS/lapack-netlib/LAPACKE/include/")
-endif()
+    set(LAPACKE_LIBRARY openblas)
+    set(OPENBLAS_LIBRARY openblas)
 
+endif()
 # ╭──────────────────────────────────────╮
 # │                 SAF                  │
 # ╰──────────────────────────────────────╯
@@ -45,43 +53,44 @@ set(SAF_ENABLE_HADES_MODULE ON)
 if(NOT APPLE)
     set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
     add_definitions(-DSAF_USE_OPEN_BLAS_AND_LAPACKE)
-    add_subdirectory(Libraries/Spatial_Audio_Framework EXCLUDE_FROM_ALL)
-    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/include")
-    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/framework/include/")
 else()
     set(SAF_PERFORMANCE_LIB "SAF_USE_APPLE_ACCELERATE")
-    add_subdirectory(Libraries/Spatial_Audio_Framework EXCLUDE_FROM_ALL)
 endif()
+
+add_subdirectory(Libraries/Spatial_Audio_Framework EXCLUDE_FROM_ALL)
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/include")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/framework/include/")
 
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │
 # ╰──────────────────────────────────────╯
-if(NOT APPLE)
-    set(SAF_LINK_LIBRARIES openblas lapacke_static saf)
-else()
-    set(SAF_LINK_LIBRARIES saf)
-endif()
-
 file(GLOB ENCODER_TILDE_SOURCE
      "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_enc/*.c")
 
 pd_add_external(saf.encoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/encoder~.c;${ENCODER_TILDE_SOURCE}" LINK_LIBRARIES
-                ${SAF_LINK_LIBRARIES})
+                saf)
 
 # ──────────────────────────────────────
 file(GLOB saf_dec_SRC "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_dec/*.c")
-pd_add_external(saf.decoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/decoder~.c;${saf_enc_SRC}" LINK_LIBRARIES
-                ${SAF_LINK_LIBRARIES})
+pd_add_external(saf.decoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/decoder~.c;${saf_dec_SRC}" LINK_LIBRARIES saf)
 
 # ─────────────────────────────────────
 file(GLOB BINAURAL_TILDE_SOURCE
      "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_bin/*.c")
 pd_add_external(saf.binaural~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binaural~.c;${BINAURAL_TILDE_SOURCE}" LINK_LIBRARIES
-                ${SAF_LINK_LIBRARIES})
+                saf)
 
 # ─────────────────────────────────────
 file(GLOB ROOMSIM_TILDE_SOURCE
      "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_roomsim/*.c")
 
 pd_add_external(saf.roomsim~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/roomsim~.c;${ROOMSIM_TILDE_SOURCE}" LINK_LIBRARIES
-                ${SAF_LINK_LIBRARIES})
+                saf)
+
+# ╭──────────────────────────────────────╮
+# │              DATA FILES              │
+# ╰──────────────────────────────────────╯
+file(GLOB HELP_PATCHES "${CMAKE_CURRENT_SOURCE_DIR}/Resources/*.pd")
+file(GLOB SOUNDS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/*.wav")
+pd_add_datafile(saf.binaural~ "${HELP_PATCHES}")
+pd_add_datafile(saf.binaural~ "${SOUNDS}")
