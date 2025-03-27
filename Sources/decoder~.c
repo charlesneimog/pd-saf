@@ -303,6 +303,7 @@ void *decoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
 
 // ─────────────────────────────────────
 void decoder_tilde_free(t_decoder_tilde *x) {
+    ambi_dec_destroy(&x->hAmbi);
     if (x->ins) {
         for (int i = 0; i < x->nSH; i++) {
             freebytes(x->ins[i], x->ambiFrameSize * sizeof(t_sample));
@@ -320,7 +321,6 @@ void decoder_tilde_free(t_decoder_tilde *x) {
         freebytes(x->ins, x->num_loudspeakers * sizeof(t_sample *));
         freebytes(x->outs_tmp, x->num_loudspeakers * sizeof(t_sample *));
     }
-    ambi_dec_destroy(&x->hAmbi);
 }
 
 // ─────────────────────────────────────

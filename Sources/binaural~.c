@@ -1,5 +1,6 @@
 #include <string.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #include <m_pd.h>
 #include <g_canvas.h>
@@ -255,12 +256,21 @@ void *binaural_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     x->glist = canvas_getcurrent();
     int order = 1;
     int num_loudspeakers = 2;
+    int multichannel = 0;
 
     if (argc >= 1) {
         order = atom_getint(argv);
     }
     if (argc >= 2) {
         num_loudspeakers = atom_getint(argv + 1);
+    }
+    if (argc >= 3) {
+        // TODO: Need to be implemented yet!
+        if (strcmp(atom_getsymbol(argv + 2)->s_name, "-m") == 0) {
+            multichannel = 1;
+        } else {
+            pd_error(x, "[saf.binaural~] Invalid argument");
+        }
     }
 
     order = order < 0 ? 1 : order;
@@ -271,9 +281,6 @@ void *binaural_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     x->num_loudspeakers = num_loudspeakers;
 
     ambi_bin_create(&x->hAmbi);
-    ambi_bin_setNormType(x->hAmbi, NORM_N3D);
-    ambi_bin_setInputOrderPreset(x->hAmbi, (SH_ORDERS)order);
-    ambi_bin_setUseDefaultHRIRsflag(x->hAmbi, 1);
 
     for (int i = 1; i < x->nSH; i++) {
         inlet_new(&x->obj, &x->obj.ob_pd, &s_signal, &s_signal);
@@ -288,6 +295,7 @@ void *binaural_tilde_new(t_symbol *s, int argc, t_atom *argv) {
 
 // ─────────────────────────────────────
 void binaural_tilde_free(t_binaural_tilde *x) {
+    ambi_bin_destroy(&x->hAmbi);
     if (x->ins) {
         for (int i = 0; i < x->nSH; i++) {
             freebytes(x->ins[i], x->ambiFrameSize * sizeof(t_sample));
@@ -305,7 +313,6 @@ void binaural_tilde_free(t_binaural_tilde *x) {
         freebytes(x->outs, x->num_loudspeakers * sizeof(t_sample *));
         freebytes(x->outs_tmp, x->pdFrameSize * sizeof(t_sample *));
     }
-    ambi_bin_destroy(&x->hAmbi);
 }
 
 // ─────────────────────────────────────

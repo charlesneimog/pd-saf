@@ -42,47 +42,41 @@ static void roomsim_tilde_set(t_roomsim_tilde *x, t_symbol *s, int argc, t_atom 
     } else if (strcmp(method, "maxreflectionorder") == 0) {
         int maxReflectionOrder = atom_getint(argv + 1);
         ambi_roomsim_setMaxReflectionOrder(x->hAmbi, maxReflectionOrder);
-    } else if (strcmp(method, "outputorder") == 0) {
-        int outputOrder = atom_getint(argv + 1);
-        ambi_roomsim_setOutputOrder(x->hAmbi, outputOrder);
-    } else if (strcmp(method, "numsources") == 0) {
-        int numSources = atom_getint(argv + 1);
-        ambi_roomsim_setNumSources(x->hAmbi, numSources);
     } else if (strcmp(method, "sourcex") == 0) {
-        int index = atom_getint(argv + 1);
+        int index = atom_getint(argv + 1) - 1;
         float xCoord = atom_getfloat(argv + 2);
         ambi_roomsim_setSourceX(x->hAmbi, index, xCoord);
     } else if (strcmp(method, "sourcey") == 0) {
-        int index = atom_getint(argv + 1);
+        int index = atom_getint(argv + 1) - 1;
         float yCoord = atom_getfloat(argv + 2);
         ambi_roomsim_setSourceY(x->hAmbi, index, yCoord);
     } else if (strcmp(method, "sourcez") == 0) {
-        int index = atom_getint(argv + 1);
+        int index = atom_getint(argv + 1) - 1;
         float zCoord = atom_getfloat(argv + 2);
         ambi_roomsim_setSourceZ(x->hAmbi, index, zCoord);
     } else if (strcmp(method, "numreceivers") == 0) {
         int numReceivers = atom_getint(argv + 1);
         ambi_roomsim_setNumReceivers(x->hAmbi, numReceivers);
     } else if (strcmp(method, "receiverx") == 0) {
-        int index = atom_getint(argv + 1);
+        int index = atom_getint(argv + 1) - 1;
         float xCoord = atom_getfloat(argv + 2);
         ambi_roomsim_setReceiverX(x->hAmbi, index, xCoord);
     } else if (strcmp(method, "receivery") == 0) {
-        int index = atom_getint(argv + 1);
+        int index = atom_getint(argv + 1) - 1;
         float yCoord = atom_getfloat(argv + 2);
         ambi_roomsim_setReceiverY(x->hAmbi, index, yCoord);
     } else if (strcmp(method, "receiverz") == 0) {
-        int index = atom_getint(argv + 1);
+        int index = atom_getint(argv + 1) - 1;
         float zCoord = atom_getfloat(argv + 2);
         ambi_roomsim_setReceiverZ(x->hAmbi, index, zCoord);
     } else if (strcmp(method, "roomdimx") == 0) {
-        float roomDimX = atom_getfloat(argv + 1);
+        float roomDimX = atom_getfloat(argv + 1) - 1;
         ambi_roomsim_setRoomDimX(x->hAmbi, roomDimX);
     } else if (strcmp(method, "roomdimy") == 0) {
-        float roomDimY = atom_getfloat(argv + 1);
+        float roomDimY = atom_getfloat(argv + 1) - 1;
         ambi_roomsim_setRoomDimY(x->hAmbi, roomDimY);
     } else if (strcmp(method, "roomdimz") == 0) {
-        float roomDimZ = atom_getfloat(argv + 1);
+        float roomDimZ = atom_getfloat(argv + 1) - 1;
         ambi_roomsim_setRoomDimZ(x->hAmbi, roomDimZ);
     } else if (strcmp(method, "wallabscoeff") == 0) {
         int xyz_idx = atom_getint(argv + 1);
@@ -246,6 +240,7 @@ void *roomsim_tilde_new(t_symbol *s, int argc, t_atom *argv) {
 
 // ─────────────────────────────────────
 void roomsim_tilde_free(t_roomsim_tilde *x) {
+    ambi_roomsim_destroy(&x->hAmbi);
     if (x->ins) {
         for (int i = 0; i < x->num_sources; i++) {
             freebytes(x->ins[i], x->ambiFrameSize * sizeof(t_sample));
@@ -263,8 +258,6 @@ void roomsim_tilde_free(t_roomsim_tilde *x) {
         freebytes(x->outs, x->nSH * sizeof(t_sample *));
         freebytes(x->outs_tmp, x->nSH * sizeof(t_sample *));
     }
-
-    ambi_roomsim_destroy(&x->hAmbi);
 }
 
 // ─────────────────────────────────────

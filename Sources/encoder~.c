@@ -215,6 +215,7 @@ void *encoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
 
 // ─────────────────────────────────────
 void encoder_tilde_free(t_encoder_tilde *x) {
+    ambi_enc_destroy(&x->hAmbi);
     if (x->ins) {
         for (int i = 0; i < x->num_sources; i++) {
             freebytes(x->ins[i], x->ambiFrameSize * sizeof(t_sample));
@@ -232,8 +233,6 @@ void encoder_tilde_free(t_encoder_tilde *x) {
         freebytes(x->outs, x->nSH * sizeof(t_sample *));
         freebytes(x->outs_tmp, x->nSH * sizeof(t_sample *));
     }
-
-    ambi_enc_destroy(&x->hAmbi);
 }
 
 // ─────────────────────────────────────
