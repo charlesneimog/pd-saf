@@ -10,46 +10,46 @@ env:
   LIBNAME: saf
   LIBVERSION: 0.0.1
 jobs:
-macos-build:
-  strategy:
-    matrix:
-      precision: [32, 64]
-      os: [macos-13, macos-latest]
-  runs-on: ${{ matrix.os }}
-  steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        fetch-depth: 1
+  macos-build:
+    strategy:
+      matrix:
+        precision: [32, 64]
+        os: [macos-13, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
 
-    - name: Cache CMake build
-      uses: actions/cache@v4
-      with:
-        path: build
-        key: build-${{ matrix.os }}-${{ matrix.precision }}-${{ hashFiles('**/CMakeLists.txt') }}
-        restore-keys: |
-          build-${{ matrix.os }}-${{ matrix.precision }}-
-          build-${{ matrix.os }}-
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: build
+          key: build-${{ matrix.os }}-${{ matrix.precision }}-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: |
+            build-${{ matrix.os }}-${{ matrix.precision }}-
+            build-${{ matrix.os }}-
 
-    - name: Install dependencies
-      run: brew install pd
+      - name: Install dependencies
+        run: brew install pd
 
-    - name: Configure and Build
-      run: |
-        # Clean existing build if cache restored but CMake config changed
-        cmake -E remove_directory build || true
-        
-        cmake -B build -S . \
-          -DPD_FLOATSIZE=${{ matrix.precision }} \
-          -DPDLIBDIR=./
-        cmake --build build --parallel $(sysctl -n hw.logicalcpu)
-        cmake --install build
+      - name: Configure and Build
+        run: |
+          # Clean existing build if cache restored but CMake config changed
+          cmake -E remove_directory build || true
+          
+          cmake -B build -S . \
+            -DPD_FLOATSIZE=${{ matrix.precision }} \
+            -DPDLIBDIR=./
+          cmake --build build --parallel $(sysctl -n hw.logicalcpu)
+          cmake --install build
 
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{env.LIBNAME}}-${{matrix.os}}-${{matrix.precision}}
-        path: ${{env.LIBNAME}}
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{env.LIBNAME}}-${{matrix.os}}-${{matrix.precision}}
+          path: ${{env.LIBNAME}}
   windows-build:
     runs-on: windows-latest
     strategy:

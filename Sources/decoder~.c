@@ -148,7 +148,7 @@ t_int *decoder_tilde_perform(t_int *w) {
         x->accumSize += n;
         // Process only when we have a full ambisonic frame
         if (x->accumSize == x->ambiFrameSize) {
-            ambi_dec_process(x->hAmbi, (const float *const *)x->ins, (float **)x->outs, x->nSH,
+            ambi_dec_process(x->hAmbi, (const float *const *)x->ins, (float* const*)x->outs, x->nSH,
                              x->num_loudspeakers, x->ambiFrameSize);
             x->accumSize = 0;
             x->outputIndex = 0;
@@ -277,18 +277,6 @@ void *decoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     }
 
     ambi_dec_create(&x->hAmbi);
-
-    // if (x->num_loudspeakers == 2) {
-    //     ambi_dec_setoutputconfigpreset(x->hambi, loudspeaker_array_preset_stereo);
-    // } else if (x->num_loudspeakers == 3) {
-    //     ambi_dec_setoutputconfigpreset(x->hambi, loudspeaker_array_preset_stereo);
-    // } else if (x->num_loudspeakers == 4) {
-    //     ambi_dec_setoutputconfigpreset(x->hambi, loudspeaker_array_preset_t_design_4);
-    // } else if (x->num_loudspeakers == 5) {
-    //     ambi_dec_setoutputconfigpreset(x->hambi, loudspeaker_array_preset_5px);
-    // } else if (x->num_loudspeakers == 22) {
-    //     ambi_dec_setoutputconfigpreset(x->hambi, loudspeaker_array_preset_22px);
-    // }
 
     for (int i = 1; i < x->nSH; i++) {
         inlet_new(&x->obj, &x->obj.ob_pd, &s_signal, &s_signal);
