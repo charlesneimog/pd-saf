@@ -10,43 +10,46 @@ env:
   LIBNAME: saf
   LIBVERSION: 0.0.1
 jobs:
-  macos-build:
-    strategy:
-      matrix:
-        precision: [32, 64]
-        os: [macos-13, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 1
-      - name: Restore cache
-        uses: actions/cache@v4
-        with:
-          path: build
-          key: build-cache-${{ runner.os }}-${{ matrix.precision }}
-          restore-keys: |
-            build-cache-${{ runner.os }}-
-      - name: Install
-        run: |
-          brew install pd 
-      - name: Build
-        run: |
-          cmake . -B build -DPD_FLOATSIZE=${{ matrix.precision }} -DPDLIBDIR=./
-          cmake --build build -j $(sysctl -n hw.logicalcpu)
-          cmake --install build
-      - name: Upload Object
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{env.LIBNAME}}-${{matrix.os}}-${{matrix.precision}}
-          path: ${{env.LIBNAME}}
-      - name: Save cache
-        uses: actions/cache@v4
-        with:
-          path: build
-          key: build-cache-${{ runner.os }}-${{ matrix.precision }}
+macos-build:
+  strategy:
+    matrix:
+      precision: [32, 64]
+      os: [macos-13, macos-latest]
+  runs-on: ${{ matrix.os }}
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 1
 
+    - name: Cache CMake build
+      uses: actions/cache@v4
+      with:
+        path: build
+        key: build-${{ matrix.os }}-${{ matrix.precision }}-${{ hashFiles('**/CMakeLists.txt') }}
+        restore-keys: |
+          build-${{ matrix.os }}-${{ matrix.precision }}-
+          build-${{ matrix.os }}-
+
+    - name: Install dependencies
+      run: brew install pd
+
+    - name: Configure and Build
+      run: |
+        # Clean existing build if cache restored but CMake config changed
+        cmake -E remove_directory build || true
+        
+        cmake -B build -S . \
+          -DPD_FLOATSIZE=${{ matrix.precision }} \
+          -DPDLIBDIR=./
+        cmake --build build --parallel $(sysctl -n hw.logicalcpu)
+        cmake --install build
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{env.LIBNAME}}-${{matrix.os}}-${{matrix.precision}}
+        path: ${{env.LIBNAME}}
   windows-build:
     runs-on: windows-latest
     strategy:
@@ -54,59 +57,72 @@ jobs:
         compiler: [mingw]
         arch: [amd64]
         precision: [32, 64]
+      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 1
-      - name: Restore cache
+
+      - name: Cache build artifacts
         uses: actions/cache@v4
         with:
           path: build
-          key: build-cache-${{ runner.os }}-${{ matrix.precision }}
+          key: build-${{ matrix.compiler }}-${{ matrix.arch }}-${{ matrix.precision }}-${{ hashFiles('**/CMakeLists.txt') }}
           restore-keys: |
-            build-cache-${{ runner.os }}-
+            build-${{ matrix.compiler }}-${{ matrix.arch }}-${{ matrix.precision }}-
+            build-${{ matrix.compiler }}-${{ matrix.arch }}-
+            build-${{ matrix.compiler }}-
+
       # ──────────────────────────────────────
       - if: matrix.compiler == 'msvc'
         name: Set up Visual Studio Build Tools
         uses: microsoft/setup-msbuild@v2
-        # TODO: Add vcpkg support
-      # ──────────────────────────────────────
+
       - if: matrix.compiler == 'mingw'
         name: Set up Msys2
         uses: msys2/setup-msys2@v2
         with:
           msystem: mingw64
-          install: make autoconf automake libtool mingw-w64-x86_64-gcc mingw64/mingw-w64-x86_64-cmake 
+          install: >-
+            make 
+            autoconf 
+            automake 
+            libtool 
+            mingw-w64-x86_64-gcc 
+            mingw-w64-x86_64-cmake
           update: false
-      # ──────────────────────────────────────
+
       - name: Install winget
         uses: Cyberboss/install-winget@v1
-      - name: Install PureData Float 32
-        if: matrix.precision == '32'
+
+      - name: Install PureData
         run: |
-          winget install -e --id MillerPuckette.PureData --accept-source-agreements
-      - name: Install PureData Float 64
-        if: matrix.precision == '64'
-        run: |
-          winget install -e --id MillerPuckette.Pd64 --accept-source-agreements
-      - name: Configure and build Mingw
+          if (${{ matrix.precision }} -eq 32) {
+            winget install -e --id MillerPuckette.PureData --accept-source-agreements
+          } else {
+            winget install -e --id MillerPuckette.Pd64 --accept-source-agreements
+          }
+
+      - name: Configure and build
         shell: msys2 {0}
         run: |
-          cmake . -B build -DPD_FLOATSIZE=${{ matrix.precision }} -DPDLIBDIR=./
-          cmake --build build
-          cmake --install build
-      - name: Upload
+          # Clean build directory if CMake configuration changed
+          if [ ! -f build/CMakeCache.txt ]; then
+            rm -rf build/*
+          fi
+          
+          cmake -B build -S . \
+            -DPD_FLOATSIZE=${{ matrix.precision }} \
+            -DPDLIBDIR=./
+          cmake --build build --parallel $NUMBER_OF_PROCESSORS
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{env.LIBNAME}}-f${{ matrix.precision }}-windows-${{ matrix.compiler}}
+          name: ${{env.LIBNAME}}-f${{ matrix.precision }}-windows-${{ matrix.compiler }}
           path: ${{env.LIBNAME}}
-      - name: Save cache
-        uses: actions/cache@v4
-        with:
-          path: build
-          key: build-cache-${{ runner.os }}-${{ matrix.precision }}
   linux-build:
     runs-on: ubuntu-latest
     strategy:

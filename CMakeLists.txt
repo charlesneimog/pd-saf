@@ -18,7 +18,7 @@ include(${PDCMAKE_FILE})
 # ╭──────────────────────────────────────╮
 # │               OpenBLAS               │
 # ╰──────────────────────────────────────╯
-if(NOT APPLE)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "APPLE")
     set(BUILD_STATIC_LIBS ON)
     set(BUILD_WITHOUT_LAPACK OFF)
     set(BUILD_TESTING OFF)
@@ -39,8 +39,8 @@ if(NOT APPLE)
     include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/OpenBLAS/lapack-netlib/LAPACKE/include/")
     set(LAPACKE_LIBRARY openblas)
     set(OPENBLAS_LIBRARY openblas)
-
 endif()
+
 # ╭──────────────────────────────────────╮
 # │                 SAF                  │
 # ╰──────────────────────────────────────╯
