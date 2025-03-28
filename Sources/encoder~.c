@@ -53,12 +53,18 @@ static void encoder_tilde_set(t_encoder_tilde *x, t_symbol *s, int argc, t_atom 
             logpost(x, 2, "               FUMA = 3");
             return;
         }
-
         ambi_enc_setNormType(x->hAmbi, newType);
     } else if (strcmp(method, "source_gain") == 0) {
         int srcIdx = atom_getint(argv + 1);      // Source index
         float newGain = atom_getfloat(argv + 2); // Gain factor
         ambi_enc_setSourceGain(x->hAmbi, srcIdx, newGain);
+    } else if (strcmp(method, "num_sources") == 0) {
+        int state = canvas_suspend_dsp();
+        int sources = atom_getint(argv + 1);
+        ambi_enc_setNumSources(x->hAmbi, sources);
+        x->num_sources = sources;
+        canvas_update_dsp();
+        canvas_resume_dsp(state);
     }
 }
 
