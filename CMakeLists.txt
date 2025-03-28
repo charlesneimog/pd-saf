@@ -64,11 +64,9 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framewo
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │
 # ╰──────────────────────────────────────╯
-file(GLOB ENCODER_SRC
-     "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_enc/*.c")
+file(GLOB ENCODER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_enc/*.c")
 
-pd_add_external(saf.encoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/encoder~.c;${ENCODER_SRC}" LINK_LIBRARIES
-                saf)
+pd_add_external(saf.encoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/encoder~.c;${ENCODER_SRC}" LINK_LIBRARIES saf)
 
 # ──────────────────────────────────────
 file(GLOB saf_dec_SRC "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_dec/*.c")
@@ -91,13 +89,15 @@ pd_add_external(saf.roomsim~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/roomsim~.c;${R
 file(GLOB PITCHSHIFTER_TILDE_SOURCE
      "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/pitch_shifter/*.c")
 
-pd_add_external(saf.pitchshifter~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/pitchshifter~.c;${PITCHSHIFTER_TILDE_SOURCE}" LINK_LIBRARIES
-                saf)
+pd_add_external(saf.pitchshifter~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/pitchshifter~.c;${PITCHSHIFTER_TILDE_SOURCE}"
+                LINK_LIBRARIES saf)
 
 # ╭──────────────────────────────────────╮
 # │              DATA FILES              │
 # ╰──────────────────────────────────────╯
 file(GLOB HELP_PATCHES "${CMAKE_CURRENT_SOURCE_DIR}/Resources/*.pd")
 file(GLOB SOUNDS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/*.wav")
+file(GLOB LUA_OBJECTS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/*.pd_lua")
 pd_add_datafile(saf.binaural~ "${HELP_PATCHES}")
 pd_add_datafile(saf.binaural~ "${SOUNDS}")
+pd_add_datafile(saf.binaural~ "${LUA_OBJECTS}")
