@@ -7,7 +7,7 @@ function panning:initialize(name, args)
 	if args == nil then
 		args[1] = 1
 	end
-	self.size = 127
+	self.size = 150
 	self:set_size(self.size, self.size)
 	self.repaint_sources = false
 	self.selected = false
@@ -79,18 +79,30 @@ function panning:in_1_size(args)
 	self:repaint(3)
 end
 
+
 -- ─────────────────────────────────────
 function panning:in_1_sources(args)
+	local num_circles = args[1]
+	local center_x, center_y = self:get_size() / 2, self:get_size() / 2
+	local distance = self.size / 3
+	local angle_step = (math.pi * 2) / num_circles -- Espaçamento angular
+
 	self.sources = {} -- Resetando a lista de círculos
-	if #args < 1 or args == nil then
-		self:error("Missing arguments")
-		return
-	end
 
-	self.sources_size = args[1]
+	for i = 1, num_circles do
+		local angle = i * angle_step -- Ângulo progressivo para cada círculo
 
-	for i = 1, self.sources_size do
-		self.sources[i] = self:create_newsource(i)
+		local x = center_x + math.cos(angle) * distance
+		local y = center_y + math.sin(angle) * distance
+
+		self.sources[i] = {
+			index = i,
+			x = x,
+			y = y,
+			size = 10,
+			color = { 200, 120, 120 },
+			text = 1,
+		}
 	end
 
 	self:repaint(2)
@@ -102,6 +114,7 @@ end
 --╰─────────────────────────────────────╯
 function panning:mouse_drag(x, y)
 	local size_x, size_y = self:get_size()
+	-- Verifica se o clique está dentro da área válida
 	if x < 5 or x > (size_x - 5) or y < 5 or y > (size_y - 5) then
 		return
 	end
@@ -253,5 +266,3 @@ function panning:paint_layer_3(g)
 		end
 	end
 end
-
--- [Remaining functions unchanged...]
