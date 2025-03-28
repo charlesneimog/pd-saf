@@ -7,20 +7,56 @@ function panning:initialize(name, args)
 	if args == nil then
 		args[1] = 1
 	end
-	self:set_size(128, 128)
+	self.size = 127
+	self:set_size(self.size, self.size)
 	self.repaint_sources = false
 	self.selected = false
 
+	-- Define colors with appropriate RGB values
+	self.colors = {
+		background1 = { 55, 85, 120 },
+		background2 = { 80, 110, 150 },
+		lines = { 150, 150, 170 },
+		text = { 200, 200, 200 },
+		sources = { 200, 120, 120 },
+		source_text = { 255, 255, 255 },
+	}
+
 	self.sources = {}
-	self.sources_size = 1
+	self.sources_size = args[1]
+	if self.sources_size == nil then
+		self.sources_size = 1
+	end
+
 	for i = 1, self.sources_size do
-		self.sources[i] = { x = 127 / 2, y = 127 / 2, size = 8, color = { 207, 127, 127 }, fill = false }
+		self.sources[i] = self:create_newsource(i)
 	end
 
 	return true
 end
 
 -- ─────────────────────────────────────
+function panning:create_newsource(i)
+	local center_x, center_y = self:get_size() / 2, self:get_size() / 2
+	local distance = self.size / 3
+	local angle_step = (math.pi * 2) / self.sources_size
+	local angle = i * angle_step
+	local x = center_x + math.cos(angle) * distance
+	local y = center_y + math.sin(angle) * distance
+
+	return {
+		x = x,
+		y = y,
+		size = 8,
+		color = self.colors.sources,
+		fill = false,
+		selected = false,
+	}
+end
+
+--╭─────────────────────────────────────╮
+--│               METHODS               │
+--╰─────────────────────────────────────╯
 function panning:in_1_reload()
 	self:dofilex(self._scriptname)
 	self:initialize("", {})
@@ -28,84 +64,194 @@ function panning:in_1_reload()
 end
 
 -- ─────────────────────────────────────
+function panning:in_1_size(args)
+	local old_size = self.size
+	self:set_size(args[1], args[1])
+	self.size = args[1]
+	local relation = self.size / old_size
+	for _, source in pairs(self.sources) do
+		source.x = source.x * relation
+		source.y = source.y * relation
+	end
+
+	self:repaint(1)
+	self:repaint(2)
+	self:repaint(3)
+end
+
+-- ─────────────────────────────────────
+function panning:in_1_sources(args)
+	self.sources = {} -- Resetando a lista de círculos
+	if #args < 1 or args == nil then
+		self:error("Missing arguments")
+		return
+	end
+
+	self.sources_size = args[1]
+
+	for i = 1, self.sources_size do
+		self.sources[i] = self:create_newsource(i)
+	end
+
+	self:repaint(2)
+	self:outlet(1, "set", { "num_sources", args[1] })
+end
+
+--╭─────────────────────────────────────╮
+--│                MOUSE                │
+--╰─────────────────────────────────────╯
 function panning:mouse_drag(x, y)
 	local size_x, size_y = self:get_size()
 	if x < 5 or x > (size_x - 5) or y < 5 or y > (size_y - 5) then
 		return
 	end
-	for i, _ in pairs(self.sources) do
-		local cx = self.sources[i].x
-		local cy = self.sources[i].y
-		local radius = self.sources[1].size / 2
-		if x >= cx - radius and x <= cx + radius and y >= cy - radius and y <= cy + radius then
+
+	for i, source in pairs(self.sources) do
+		local cx = source.x -- Centro do círculo X
+		local cy = source.y -- Centro do círculo Y
+		local radius = source.size / 2 -- Raio do círculo
+		local dx = x - cx
+		local dy = y - cy
+
+		-- Verifica se o ponto está dentro do círculo
+		if self.sources[i].selected then
 			self.sources[i].x = x
 			self.sources[i].y = y
-			self:repaint(2)
+			self.sources[i].fill = true
+		else
+			self.sources[i].fill = false
 		end
 	end
+
+	-- Repaint da interface gráfica
+	self:repaint(3)
 end
 
 -- ─────────────────────────────────────
 function panning:mouse_down(x, y)
-	for i, _ in pairs(self.sources) do
-		local cx = self.sources[i].x
-		local cy = self.sources[i].y
-		local radius = self.sources[1].size / 2
-		if x >= cx - radius and x <= cx + radius and y >= cy - radius and y <= cy + radius then
+	local already_selected = false
+	for i, source in pairs(self.sources) do
+		local cx = source.x
+		local cy = source.y
+		local radius = source.size / 2
+		local dx = x - cx
+		local dy = y - cy
+		if (dx * dx + dy * dy) <= (radius * radius) then
 			self.sources[i].x = x
 			self.sources[i].y = y
 			self.sources[i].fill = true
-			self:repaint(2)
+			if not already_selected then
+				self.sources[i].selected = true
+				already_selected = true
+			else
+				self.sources[i].selected = false
+			end
+		else
+			self.sources[i].fill = false
+			self.sources[i].selected = false
 		end
 	end
+
+	self:repaint(2)
+	self:repaint(3)
 end
 
 -- ─────────────────────────────────────
-function panning:mouse_up(x, y)
+function panning:mouse_up(_, _)
 	for i, _ in pairs(self.sources) do
 		self.sources[i].fill = false
+		self.sources[i].selected = false
 	end
+	self:repaint(2)
+	self:repaint(3)
+end
+
+--╭─────────────────────────────────────╮
+--│                PAINT                │
+--╰─────────────────────────────────────╯
+function panning:paint(g)
+	local size_x, size_y = self:get_size()
+	if not self.colors then
+		return
+	end
+
+	-- Use colors from self.colors
+	g:set_color(table.unpack(self.colors.background1))
+	g:fill_all()
+	g:set_color(table.unpack(self.colors.background2))
+	g:fill_ellipse(0, 0, size_x, size_y)
+
+	-- Lines
+	g:set_color(table.unpack(self.colors.lines))
+	local center = size_x / 2
+	g:draw_line(center, 0, center, self.size, 1)
+	g:draw_line(0, center, self.size, center, 1)
+
+	-- Ellipses
+	local base_size = math.min(size_x, size_y) / 2
+	for i = 0, 3 do
+		local scale = math.log(i + 1) / math.log(6)
+		local radius_x = base_size * (1 - scale)
+		local radius_y = base_size * (1 - scale)
+		g:stroke_ellipse(center - radius_x, center - radius_y, radius_x * 2, radius_y * 2, 1)
+	end
+
+	-- Text
+	local text_x, text_y = 1, 1
+	g:set_color(table.unpack(self.colors.text))
+	g:draw_text("xy view", text_x, text_y, 50, 1)
+
 	self:repaint(2)
 end
 
 -- ─────────────────────────────────────
 function panning:paint_layer_2(g)
-	for _, source in pairs(self.sources) do
-		local x = source.x - (source.size / 2)
-		local y = source.y - (source.size / 2)
-		local size = source.size
-		local color = source.color
-		g:set_color(color[1], color[2], color[3])
-		if source.fill then
-			g:fill_ellipse(x, y, size, size)
+	for i, source in pairs(self.sources) do
+		if not self.sources[i].selected then
+			local x = source.x - (source.size / 2)
+			local y = source.y - (source.size / 2)
+			local size = source.size
+			g:set_color(table.unpack(source.color))
+			g:stroke_ellipse(x, y, size, size, 1)
+
+			local text_x, text_y = x - (size / 1.5), y - (size / 2)
+			g:set_color(table.unpack(self.colors.source_text)) -- Use source_text color
+			g:draw_text(tostring(i), text_x, text_y, 20, 3)
 		end
-		g:stroke_ellipse(x, y, size, size, 1)
 	end
 end
 
 -- ─────────────────────────────────────
-function panning:paint(g)
-	local size_x, size_y = self:get_size()
+function panning:paint_layer_3(g)
+	for i, source in pairs(self.sources) do
+		if self.sources[i].selected then
+			local x = source.x - (source.size / 2)
+			local y = source.y - (source.size / 2)
+			local size = source.size
+			g:set_color(table.unpack(source.color))
+			g:fill_ellipse(x, y, size, size)
+			g:stroke_ellipse(x, y, size, size, 1)
 
-	g:set_color(55, 85, 120)
-	g:fill_all()
-	g:set_color(80, 110, 150)
-	g:fill_ellipse(0, 0, size_x, size_y)
+			-- Source index text
+			local text_x, text_y = x - (size / 1.5), y - (size / 2)
+			g:set_color(table.unpack(self.colors.source_text)) -- Use source_text color
+			g:draw_text(tostring(i), text_x, text_y, 10, 3)
 
-	-- lines
-	g:set_color(150, 150, 170)
-	local center = size_x / 2
-	g:draw_line(center, 0, center, 127, 1)
-	g:draw_line(0, center, 127, center, 1)
-
-	local base_size = math.min(size_x, size_y) / 2 -- Start with a base size
-	for i = 0, 3 do
-		local scale = math.log(i + 1) / math.log(6) -- Normalize log scale (adjust divisor for effect)
-		local radius_x = base_size * (1 - scale)
-		local radius_y = base_size * (1 - scale)
-
-		g:stroke_ellipse(center - radius_x, center - radius_y, radius_x * 2, radius_y * 2, 1)
+			-- Coordinate text
+			text_x, text_y = x + (size / 1), y + (size / 2)
+			local scale_factor = 0.7
+			g:scale(scale_factor, scale_factor)
+			g:set_color(table.unpack(self.colors.source_text)) -- Use source_text color
+			g:draw_text(
+				tostring(math.floor(x)) .. " " .. tostring(math.floor(y)),
+				text_x / scale_factor,
+				text_y / scale_factor,
+				40,
+				1
+			)
+			g:reset_transform()
+		end
 	end
-
-	self:repaint(2)
 end
+
+-- [Remaining functions unchanged...]
