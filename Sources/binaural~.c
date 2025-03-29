@@ -1,6 +1,6 @@
 #include <string.h>
+#include <math.h>
 #include <pthread.h>
-#include <unistd.h>
 
 #include <m_pd.h>
 #include <g_canvas.h>
@@ -18,20 +18,23 @@ typedef struct _binaural_tilde {
 
     void *hAmbi;
 
-    t_sample **ins;
-    t_sample **outs;
-    t_sample **ins_tmp;
-    t_sample **outs_tmp;
+    t_sample **aIns;
+    t_sample **aOuts;
+    t_sample **aInsTmp;
+    t_sample **aOutsTmp;
 
-    int ambiFrameSize;
-    int pdFrameSize;
-    int accumSize;
+    int nAmbiFrameSize;
+    int nPdFrameSize;
+    int nInAccIndex;
+    int nOutAccIndex;
 
-    int order;
-    int nSH;
-    int num_loudspeakers;
+    int nOrder;
+    int nIn;
+    int nOut;
+    int nPreviousIn;
+    int nPreviousOut;
 
-    int outputIndex;
+    int multichannel;
 } t_binaural_tilde;
 
 // ─────────────────────────────────────
@@ -40,6 +43,49 @@ void *binaural_tilde_initcodec(void *x_void) {
     ambi_bin_initCodec(x->hAmbi);
     logpost(x, 2, "[saf.binaural~] binaural codec initialized!");
     return NULL;
+}
+
+// ─────────────────────────────────────
+static void binaural_tilde_malloc(t_binaural_tilde *x) {
+    if (x->aIns) {
+        for (int i = 0; i < x->nIn; i++) {
+            if (x->aIns[i]) {
+                freebytes(x->aIns[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+            if (x->aInsTmp[i]) {
+                freebytes(x->aInsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+        freebytes(x->aIns, x->nIn * sizeof(t_sample *));
+    }
+    if (x->aOuts) {
+        for (int i = 0; i < x->nOut; i++) {
+            if (x->aOuts[i]) {
+                freebytes(x->aOuts[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+            if (x->aOutsTmp[i]) {
+                freebytes(x->aOutsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+        freebytes(x->aOuts, x->nOut * sizeof(t_sample *));
+    }
+
+    // memory allocation
+    x->aIns = (t_sample **)getbytes(x->nIn * sizeof(t_sample *));
+    x->aInsTmp = (t_sample **)getbytes(x->nIn * sizeof(t_sample *));
+    x->aOuts = (t_sample **)getbytes(x->nOut * sizeof(t_sample *));
+    x->aOutsTmp = (t_sample **)getbytes(x->nOut * sizeof(t_sample *));
+
+    for (int i = 0; i < x->nIn; i++) {
+        x->aIns[i] = (t_sample *)getbytes(x->nAmbiFrameSize * sizeof(t_sample));
+        x->aInsTmp[i] = (t_sample *)getbytes(x->nAmbiFrameSize * sizeof(t_sample));
+    }
+    for (int i = 0; i < x->nOut; i++) {
+        x->aOuts[i] = (t_sample *)getbytes(x->nAmbiFrameSize * sizeof(t_sample));
+        x->aOutsTmp[i] = (t_sample *)getbytes(x->nAmbiFrameSize * sizeof(t_sample));
+    }
+    x->nPreviousIn = x->nIn;
+    x->nPreviousOut = x->nOut;
 }
 
 // ╭─────────────────────────────────────╮
@@ -147,116 +193,149 @@ static void binaural_tilde_set(t_binaural_tilde *x, t_symbol *s, int argc, t_ato
 }
 
 // ─────────────────────────────────────
+t_int *binaural_tilde_performmultichannel(t_int *w) {
+    t_binaural_tilde *x = (t_binaural_tilde *)(w[1]);
+    int n = (int)(w[2]);
+    t_sample *ins = (t_sample *)(w[3]);
+    t_sample *outs = (t_sample *)(w[4]);
+
+    if (n < x->nAmbiFrameSize) {
+        for (int ch = 0; ch < x->nIn; ch++) {
+            memcpy(x->aIns[ch] + x->nInAccIndex, ins + (n * ch), n * sizeof(t_sample));
+        }
+        x->nInAccIndex += n;
+
+        if (x->nInAccIndex == x->nAmbiFrameSize) {
+            ambi_bin_process(x->hAmbi, (const float *const *)x->aIns, (float *const *)x->aOuts,
+                             x->nIn, x->nOut, x->nAmbiFrameSize);
+            x->nInAccIndex = 0;
+            x->nOutAccIndex = 0;
+        }
+
+        if (x->nOutAccIndex + n <= x->nAmbiFrameSize) {
+            for (int ch = 0; ch < x->nOut; ch++) {
+                memcpy(outs + (n * ch), x->aOuts[ch] + x->nOutAccIndex, n * sizeof(t_sample));
+            }
+            x->nOutAccIndex += n;
+        } else {
+            for (int ch = 0; ch < x->nOut; ch++) {
+                memset(outs + (n * ch), 0, n * sizeof(t_sample));
+            }
+        }
+    } else {
+        int chunks = n / x->nAmbiFrameSize;
+        for (int chunkIndex = 0; chunkIndex < chunks; chunkIndex++) {
+            // Copia os dados de entrada para cada canal
+            for (int ch = 0; ch < x->nIn; ch++) {
+                memcpy(x->aInsTmp[ch], (t_sample *)w[3] + ch * n + chunkIndex * x->nAmbiFrameSize,
+                       x->nAmbiFrameSize * sizeof(t_sample));
+            }
+            // Processa o bloco atual
+            ambi_bin_process(x->hAmbi, (const float *const *)x->aInsTmp,
+                             (float *const *)x->aOutsTmp, x->nIn, x->nOut, x->nAmbiFrameSize);
+
+            t_sample *out = (t_sample *)(w[4]);
+            for (int ch = 0; ch < x->nOut; ch++) {
+                memcpy(out + ch * n + chunkIndex * x->nAmbiFrameSize, x->aOutsTmp[ch],
+                       x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+    }
+
+    return (w + 5);
+}
+
+// ─────────────────────────────────────
 t_int *binaural_tilde_perform(t_int *w) {
     t_binaural_tilde *x = (t_binaural_tilde *)(w[1]);
     int n = (int)(w[2]);
-    int init = ambi_bin_getProgressBar0_1(x->hAmbi);
-    if (init != 1) {
-        for (int ch = 0; ch < x->num_loudspeakers; ch++) {
-            t_sample *out = (t_sample *)(w[3 + x->nSH + ch]);
-            memset(out, 0, n * sizeof(t_sample));
-        }
-        return (w + 3 + x->nSH + x->num_loudspeakers);
-    }
 
-    if (n <= x->ambiFrameSize) {
-        for (int ch = 0; ch < x->nSH; ch++) {
-            memcpy(x->ins[ch] + x->accumSize, (t_sample *)w[3 + ch], n * sizeof(t_sample));
+    if (n < x->nAmbiFrameSize) {
+        for (int ch = 0; ch < x->nIn; ch++) {
+            memcpy(x->aIns[ch] + x->nInAccIndex, (t_sample *)w[3 + ch], n * sizeof(t_sample));
         }
-        x->accumSize += n;
-        if (x->accumSize == x->ambiFrameSize) {
-            ambi_bin_process(x->hAmbi, (const float *const *)x->ins, (float* const*)x->outs, x->nSH,
-                             x->num_loudspeakers, x->ambiFrameSize);
-            x->accumSize = 0;
-            x->outputIndex = 0;
+        x->nInAccIndex += n;
+        if (x->nInAccIndex == x->nAmbiFrameSize) {
+            ambi_bin_process(x->hAmbi, (const float *const *)x->aIns, (float *const *)x->aOuts,
+                             x->nIn, x->nOut, x->nAmbiFrameSize);
+            x->nInAccIndex = 0;
+            x->nOutAccIndex = 0;
         }
-        for (int ch = 0; ch < x->num_loudspeakers; ch++) {
-            t_sample *out = (t_sample *)(w[3 + x->nSH + ch]);
-            memcpy(out, x->outs[ch] + x->outputIndex, n * sizeof(t_sample));
+        for (int ch = 0; ch < x->nOut; ch++) {
+            t_sample *out = (t_sample *)(w[3 + x->nIn + ch]);
+            memcpy(out, x->aOuts[ch] + x->nOutAccIndex, n * sizeof(t_sample));
         }
-        x->outputIndex += n;
+        x->nOutAccIndex += n;
     } else {
-        int chunks = n / x->ambiFrameSize;
+        int chunks = n / x->nAmbiFrameSize;
         for (int chunkIndex = 0; chunkIndex < chunks; chunkIndex++) {
-            for (int ch = 0; ch < x->nSH; ch++) {
-                memcpy(x->ins_tmp[ch], (t_sample *)w[3 + ch] + (chunkIndex * x->ambiFrameSize),
-                       x->ambiFrameSize * sizeof(t_sample));
+            for (int ch = 0; ch < x->nIn; ch++) {
+                memcpy(x->aInsTmp[ch], (t_sample *)w[3 + ch] + (chunkIndex * x->nAmbiFrameSize),
+                       x->nAmbiFrameSize * sizeof(t_sample));
             }
-            ambi_bin_process(x->hAmbi, (const float *const *)x->ins_tmp, (float* const*)x->outs_tmp, x->nSH,
-                             x->num_loudspeakers, x->ambiFrameSize);
-            for (int ch = 0; ch < x->num_loudspeakers; ch++) {
-                t_sample *out = (t_sample *)(w[3 + x->nSH + ch]);
-                memcpy(out + (chunkIndex * x->ambiFrameSize), x->outs_tmp[ch],
-                       x->ambiFrameSize * sizeof(t_sample));
+            ambi_bin_process(x->hAmbi, (const float *const *)x->aInsTmp,
+                             (float *const *)x->aOutsTmp, x->nIn, x->nOut, x->nAmbiFrameSize);
+            for (int ch = 0; ch < x->nOut; ch++) {
+                t_sample *out = (t_sample *)(w[3 + x->nIn + ch]);
+                memcpy(out + (chunkIndex * x->nAmbiFrameSize), x->aOutsTmp[ch],
+                       x->nAmbiFrameSize * sizeof(t_sample));
             }
         }
     }
 
-    return (w + 3 + x->nSH + x->num_loudspeakers);
+    return (w + 3 + x->nIn + x->nOut);
 }
 
 // ─────────────────────────────────────
 void binaural_tilde_dsp(t_binaural_tilde *x, t_signal **sp) {
-    x->ambiFrameSize = ambi_bin_getFrameSize();
-    x->pdFrameSize = sp[0]->s_n;
-    x->outputIndex = 0;
-    x->accumSize = 0;
-    int sum = x->nSH + x->num_loudspeakers;
-    int sigvecsize = sum + 2;
-    t_int *sigvec = getbytes(sigvecsize * sizeof(t_int));
+    // Set frame sizes and reset indices
+    x->nAmbiFrameSize = ambi_bin_getFrameSize();
+    x->nPdFrameSize = sp[0]->s_n;
+    x->nOutAccIndex = 0;
+    x->nInAccIndex = 0;
 
+    // add this in another thread
     if (ambi_bin_getProgressBar0_1(x->hAmbi) != 1 && ambi_bin_getProgressBar0_1(x->hAmbi) == 0) {
-        // call another thread here, because ambi_bin_initCodec takes a long time
+        // Initialize the ambisonic encoder
         ambi_bin_init(x->hAmbi, sys_getsr());
-        logpost(x, 2, "[saf.binaural~] initializing binaural codec...");
+        logpost(x, 2, "[saf.decoder~] initializing decoder codec...");
         pthread_t initThread;
         pthread_create(&initThread, NULL, binaural_tilde_initcodec, (void *)x);
         pthread_detach(initThread);
     }
 
-    // TODO: Setup multi-out signals
-    for (int i = x->nSH; i < sum; i++) {
-        signal_setmultiout(&sp[i], 1);
+    if (x->nPreviousIn != x->nIn || x->nPreviousOut != x->nOut) {
+        binaural_tilde_malloc(x);
     }
 
-    sigvec[0] = (t_int)x;
-    sigvec[1] = (t_int)sp[0]->s_n;
-    for (int i = 0; i < sum; i++) {
-        sigvec[2 + i] = (t_int)sp[i]->s_vec;
-    }
-
-    x->ins = (t_sample **)getbytes(x->nSH * sizeof(t_sample *));
-    x->outs = (t_sample **)getbytes(x->num_loudspeakers * sizeof(t_sample *));
-    x->ins_tmp = (t_sample **)getbytes(x->nSH * sizeof(t_sample *));
-    x->outs_tmp = (t_sample **)getbytes(x->num_loudspeakers * sizeof(t_sample *));
-
-    for (int i = 0; i < x->nSH; i++) {
-        x->ins[i] = (t_sample *)getbytes(x->ambiFrameSize * sizeof(t_sample));
-        for (int j = 0; j < x->ambiFrameSize; j++) {
-            x->ins[i][j] = 0;
+    // Initialize memory allocation for inputs and outputs
+    if (x->multichannel) {
+        signal_setmultiout(&sp[1], x->nOut);
+        dsp_add(binaural_tilde_performmultichannel, 4, x, sp[0]->s_n, sp[0]->s_vec, sp[1]->s_vec);
+    } else {
+        int sum = x->nIn + x->nOut;
+        int sigvecsize = sum + 2;
+        for (int i = x->nIn; i < sum; i++) {
+            signal_setmultiout(&sp[i], 1);
         }
-        x->ins_tmp[i] = (t_sample *)getbytes(sp[0]->s_n * sizeof(t_sample));
-    }
-
-    for (int i = 0; i < x->num_loudspeakers; i++) {
-        x->outs[i] = (t_sample *)getbytes(x->ambiFrameSize * sizeof(t_sample));
-        for (int j = 0; j < x->ambiFrameSize; j++) {
-            x->outs[i][j] = 0;
+        t_int *sigvec = getbytes(sigvecsize * sizeof(t_int));
+        sigvec[0] = (t_int)x;
+        sigvec[1] = (t_int)sp[0]->s_n;
+        for (int i = 0; i < sum; i++) {
+            sigvec[2 + i] = (t_int)sp[i]->s_vec;
         }
-        x->outs_tmp[i] = (t_sample *)getbytes(sp[0]->s_n * sizeof(t_sample));
+        dsp_addv(binaural_tilde_perform, sigvecsize, sigvec);
+        freebytes(sigvec, sigvecsize * sizeof(t_int));
     }
-
-    dsp_addv(binaural_tilde_perform, sigvecsize, sigvec);
-    freebytes(sigvec, sigvecsize * sizeof(t_int));
 }
 
 // ─────────────────────────────────────
 void *binaural_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     t_binaural_tilde *x = (t_binaural_tilde *)pd_new(binaural_tilde_class);
-    x->glist = canvas_getcurrent();
-    int order = 1;
-    int num_loudspeakers = 2;
-    int multichannel = 0;
+    x->glist = canvas_getcurrent(); // TODO: add HRIR reader
+    int order = (argc >= 1) ? atom_getint(argv) : 1;
+    int num_loudspeakers = (argc >= 2) ? atom_getint(argv + 1) : 2;
+    x->multichannel = (argc >= 3) ? strcmp(atom_getsymbol(argv + 2)->s_name, "-m") == 0 : 0;
 
     if (argc >= 1) {
         order = atom_getint(argv);
@@ -264,31 +343,28 @@ void *binaural_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     if (argc >= 2) {
         num_loudspeakers = atom_getint(argv + 1);
     }
-    if (argc >= 3) {
-        // TODO: Need to be implemented yet!
-        if (strcmp(atom_getsymbol(argv + 2)->s_name, "-m") == 0) {
-            multichannel = 1;
-        } else {
-            pd_error(x, "[saf.binaural~] Invalid argument");
-        }
-    }
 
-    order = order < 0 ? 1 : order;
+    order = order < 0 ? 0 : order;
     num_loudspeakers = num_loudspeakers < 1 ? 1 : num_loudspeakers;
 
-    x->order = order;
-    x->nSH = (order + 1) * (order + 1);
-    x->num_loudspeakers = num_loudspeakers;
-
+    x->nOrder = (int)floor(sqrt(num_loudspeakers) - 1);
+    x->nIn = (order + 1) * (order + 1);
+    x->nOut = num_loudspeakers;
     ambi_bin_create(&x->hAmbi);
 
-    for (int i = 1; i < x->nSH; i++) {
-        inlet_new(&x->obj, &x->obj.ob_pd, &s_signal, &s_signal);
-    }
-
-    for (int i = 0; i < x->num_loudspeakers; i++) {
+    if (x->multichannel) {
         outlet_new(&x->obj, &s_signal);
+    } else {
+        for (int i = 1; i < x->nIn; i++) {
+            inlet_new(&x->obj, &x->obj.ob_pd, &s_signal, &s_signal);
+        }
+
+        for (int i = 0; i < x->nOut; i++) {
+            outlet_new(&x->obj, &s_signal);
+        }
     }
+    x->aIns = NULL;
+    x->aOuts = NULL;
 
     return (void *)x;
 }
@@ -296,22 +372,34 @@ void *binaural_tilde_new(t_symbol *s, int argc, t_atom *argv) {
 // ─────────────────────────────────────
 void binaural_tilde_free(t_binaural_tilde *x) {
     ambi_bin_destroy(&x->hAmbi);
-    if (x->ins) {
-        for (int i = 0; i < x->nSH; i++) {
-            freebytes(x->ins[i], x->ambiFrameSize * sizeof(t_sample));
-            freebytes(x->ins_tmp[i], x->pdFrameSize * sizeof(t_sample));
+    for (int i = 0; i < x->nIn; i++) {
+        if (x->aIns) {
+            freebytes(x->aIns[i], x->nAmbiFrameSize * sizeof(t_sample));
         }
-        freebytes(x->ins, x->nSH * sizeof(t_sample *));
-        freebytes(x->ins_tmp, x->nSH * sizeof(t_sample *));
+        if (x->aInsTmp) {
+            freebytes(x->aInsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+        }
+    }
+    for (int i = 0; i < x->nOut; i++) {
+        if (x->aOuts) {
+            freebytes(x->aOuts[i], x->nAmbiFrameSize * sizeof(t_sample));
+        }
+        if (x->aOutsTmp) {
+            freebytes(x->aOutsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+        }
     }
 
-    if (x->outs) {
-        for (int i = 0; i < x->num_loudspeakers; i++) {
-            freebytes(x->outs[i], x->ambiFrameSize * sizeof(t_sample));
-            freebytes(x->outs_tmp[i], x->pdFrameSize * sizeof(t_sample));
-        }
-        freebytes(x->outs, x->num_loudspeakers * sizeof(t_sample *));
-        freebytes(x->outs_tmp, x->pdFrameSize * sizeof(t_sample *));
+    if (x->aIns) {
+        freebytes(x->aIns, x->nIn * sizeof(t_sample *));
+    }
+    if (x->aInsTmp) {
+        freebytes(x->aInsTmp, x->nIn * sizeof(t_sample *));
+    }
+    if (x->aOuts) {
+        freebytes(x->aOuts, x->nOut * sizeof(t_sample *));
+    }
+    if (x->aOutsTmp) {
+        freebytes(x->aOutsTmp, x->nOut * sizeof(t_sample *));
     }
 }
 
