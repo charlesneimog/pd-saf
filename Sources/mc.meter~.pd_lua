@@ -60,11 +60,20 @@ end
 -- ─────────────────────────────────────
 function meter:in_1_frames(args)
 	self.frames = args[1]
+	if self.frames < 1 then
+		self:error("[mc.meter~] Invalid frames value")
+		self.frames = 30
+		return
+	end
 	self:update_args()
 end
 -- ─────────────────────────────────────
 function meter:in_1_width(args)
 	self.meter_width = args[1]
+	if self.meter_width < 1 then
+		self:error("[mc.meter~] Invalid width value")
+		self.meter_width = 1
+	end
 	self:set_size(self.inchans * self.meter_width, self.height)
 	self:repaint()
 	self:repaint(1)
