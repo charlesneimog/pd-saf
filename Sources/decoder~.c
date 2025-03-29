@@ -175,8 +175,7 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
         float freq = atom_getfloat(argv + 1);
         ambi_dec_setTransitionFreq(x->hAmbi, freq);
     } else {
-        pd_error(x->glist, "[saf.decoder~] Unknown set method: %s", method);
-        return;
+        pd_error(x, "[saf.decoder~] Unknown set method: %s", method);
     }
 }
 

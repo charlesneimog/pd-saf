@@ -112,6 +112,8 @@ static void encoder_tilde_set(t_encoder_tilde *x, t_symbol *s, int argc, t_atom 
         x->nIn = sources;
         canvas_update_dsp();
         canvas_resume_dsp(state);
+    } else{
+        pd_error(x, "[saf.encoder~] Unknown set method: %s", method);
     }
 }
 
