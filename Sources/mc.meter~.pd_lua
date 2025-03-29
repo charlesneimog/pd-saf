@@ -146,6 +146,9 @@ function meter:paint_layer_3(g)
 	local pos_v = 0
 	for ch = 1, self.inchans do
 		local rms_value = self.rms[ch] or 0
+        if (rms_value > 1) then
+            rms_value = 1
+        end
 		local meter_height = (self.height * 0.9) * rms_value
 		if meter_height < 2 then
 			meter_height = 2
