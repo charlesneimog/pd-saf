@@ -14,12 +14,12 @@ function panning:initialize(name, args)
 
 	-- Define colors with appropriate RGB values
 	self.colors = {
-		background1 = { 55, 85, 120 },
-		background2 = { 80, 110, 150 },
-		lines = { 150, 150, 170 },
-		text = { 200, 200, 200 },
-		sources = { 200, 120, 120 },
-		source_text = { 255, 255, 255 },
+		background1 = { 38, 48, 100}, -- obj color
+		background2 = { 48, 58, 100}, -- obj inside circle
+		lines = { 150, 150, 200 }, -- lines
+		text = { 50, 50, 50 }, -- text
+		sources = { 255, 0, 0 },
+		source_text = { 0, 0, 0 },
 	}
 
 	self.sources = {}
@@ -79,7 +79,6 @@ function panning:in_1_size(args)
 	self:repaint(3)
 end
 
-
 -- ─────────────────────────────────────
 function panning:in_1_sources(args)
 	local num_circles = args[1]
@@ -91,18 +90,9 @@ function panning:in_1_sources(args)
 
 	for i = 1, num_circles do
 		local angle = i * angle_step -- Ângulo progressivo para cada círculo
-
-		local x = center_x + math.cos(angle) * distance
-		local y = center_y + math.sin(angle) * distance
-
-		self.sources[i] = {
-			index = i,
-			x = x,
-			y = y,
-			size = 10,
-			color = { 200, 120, 120 },
-			text = 1,
-		}
+		self.sources[i] = self:create_newsource(i)
+		self.sources[i].x = center_x + math.cos(angle) * distance
+		self.sources[i].y = center_y + math.sin(angle) * distance
 	end
 
 	self:repaint(2)
@@ -119,18 +109,12 @@ function panning:mouse_drag(x, y)
 		return
 	end
 
-	for i, source in pairs(self.sources) do
-		local cx = source.x -- Centro do círculo X
-		local cy = source.y -- Centro do círculo Y
-		local radius = source.size / 2 -- Raio do círculo
-		local dx = x - cx
-		local dy = y - cy
-
-		-- Verifica se o ponto está dentro do círculo
+	for i, _ in pairs(self.sources) do
 		if self.sources[i].selected then
 			self.sources[i].x = x
 			self.sources[i].y = y
 			self.sources[i].fill = true
+			self:outlet(1, "list", { i, x, y })
 		else
 			self.sources[i].fill = false
 		end
@@ -227,9 +211,12 @@ function panning:paint_layer_2(g)
 			g:set_color(table.unpack(source.color))
 			g:stroke_ellipse(x, y, size, size, 1)
 
-			local text_x, text_y = x - (size / 1.5), y - (size / 2)
+			local scale_factor = 0.7
+			g:scale(scale_factor, scale_factor)
+			local text_x, text_y = x - (size / 3), y - (size / 3)
 			g:set_color(table.unpack(self.colors.source_text)) -- Use source_text color
-			g:draw_text(tostring(i), text_x, text_y, 20, 3)
+			g:draw_text(tostring(i), text_x / scale_factor, text_y / scale_factor, 20, 3)
+			g:reset_transform()
 		end
 	end
 end

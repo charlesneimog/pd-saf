@@ -7,7 +7,7 @@ function meter:initialize(name, args)
 	self.inchans = 4
 	self.meter_width = 6
 	self.height = 80
-	self.frames = 60
+	self.frames = 20
 	self.width = self.meter_width * self.inchans
 	self:set_size(self.width, self.height)
 	self.neednewrms = true
@@ -146,12 +146,13 @@ function meter:paint_layer_3(g)
 	local pos_v = 0
 	for ch = 1, self.inchans do
 		local rms_value = self.rms[ch] or 0
-        if (rms_value > 1) then
-            rms_value = 1
-        end
 		local meter_height = (self.height * 0.9) * rms_value
-		if meter_height < 2 then
-			meter_height = 2
+		if rms_value > 1 then
+			meter_height = 1
+		end
+
+		if meter_height < 1 then
+			meter_height = 1
 		end
 		local r = math.min(2 * rms_value, 1) -- Increases from 0 → 1
 		local g_val = math.min(2 * (1 - rms_value), 1) -- Decreases from 1 → 0

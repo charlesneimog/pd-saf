@@ -390,29 +390,37 @@ void *ambiroom_tilde_new(t_symbol *s, int argc, t_atom *argv) {
 
 // ─────────────────────────────────────
 void ambiroom_tilde_free(t_ambi_roomsim_tilde *x) {
-    printf("ambiroom_tilde_free\n");
     ambi_roomsim_destroy(&x->hAmbi);
-    if (x->multichannel) {
-        // TODO:
-    } else {
+    for (int i = 0; i < x->nIn; i++) {
         if (x->aIns) {
-            for (int i = 0; i < x->nIn; i++) {
-                freebytes(x->aIns[i], x->nAmbiFrameSize * sizeof(t_sample));
-                freebytes(x->aInsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
-            }
-            freebytes(x->aIns, x->nIn * sizeof(t_sample *));
-            freebytes(x->aInsTmp, x->nIn * sizeof(t_sample *));
+            freebytes(x->aIns[i], x->nAmbiFrameSize * sizeof(t_sample));
         }
-
-        if (x->aOuts) {
-            for (int i = 0; i < x->nOut; i++) {
-                freebytes(x->aOuts[i], x->nAmbiFrameSize * sizeof(t_sample));
-                freebytes(x->aOutsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
-            }
-            freebytes(x->aOuts, x->nOut * sizeof(t_sample *));
-            freebytes(x->aOutsTmp, x->nOut * sizeof(t_sample *));
+        if (x->aInsTmp) {
+            freebytes(x->aInsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
         }
     }
+    for (int i = 0; i < x->nOut; i++) {
+        if (x->aOuts) {
+            freebytes(x->aOuts[i], x->nAmbiFrameSize * sizeof(t_sample));
+        }
+        if (x->aOutsTmp) {
+            freebytes(x->aOutsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+        }
+    }
+
+    if (x->aIns) {
+        freebytes(x->aIns, x->nIn * sizeof(t_sample *));
+    }
+    if (x->aInsTmp) {
+        freebytes(x->aInsTmp, x->nIn * sizeof(t_sample *));
+    }
+    if (x->aOuts) {
+        freebytes(x->aOuts, x->nOut * sizeof(t_sample *));
+    }
+    if (x->aOutsTmp) {
+        freebytes(x->aOutsTmp, x->nOut * sizeof(t_sample *));
+    }
+
 }
 
 // ─────────────────────────────────────

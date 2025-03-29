@@ -4,7 +4,6 @@
 
 #include <m_pd.h>
 #include <g_canvas.h>
-#include <s_stuff.h>
 
 #include <pitch_shifter.h>
 
@@ -13,29 +12,74 @@ static t_class *pitchshifter_tilde_class;
 // ─────────────────────────────────────
 typedef struct _pitchshifter_tilde {
     t_object obj;
-    t_canvas *glist;
-    void *hAmbi;
     t_sample sample;
 
-    t_sample **ins;
-    t_sample **outs;
-    t_sample **ins_tmp;
-    t_sample **outs_tmp;
+    void *hAmbi;
+    unsigned hAmbiInit;
 
-    int ambiFrameSize;
-    int pdFrameSize;
-    int accumSize;
+    t_sample **aIns;
+    t_sample **aOuts;
+    t_sample **aInsTmp;
+    t_sample **aOutsTmp;
 
-    int order;
-    int nSH;
-    int num_loudspeakers;
+    int nAmbiFrameSize;
+    int nPdFrameSize;
+    int nInAccIndex;
+    int nOutAccIndex;
 
-    int outputIndex;
+    int nOrder;
+    int nIn;
+    int nOut;
+    int nPreviousIn;
+    int nPreviousOut;
+
+    int multichannel;
 } t_pitchshifter_tilde;
 
-// ╭─────────────────────────────────────╮
-// │               Methods               │
-// ╰─────────────────────────────────────╯
+// ─────────────────────────────────────
+static void pitchshifter_tilde_malloc(t_pitchshifter_tilde *x) {
+    if (x->aIns) {
+        for (int i = 0; i < x->nIn; i++) {
+            if (x->aIns[i]) {
+                freebytes(x->aIns[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+            if (x->aInsTmp[i]) {
+                freebytes(x->aInsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+        freebytes(x->aIns, x->nIn * sizeof(t_sample *));
+    }
+    if (x->aOuts) {
+        for (int i = 0; i < x->nOut; i++) {
+            if (x->aOuts[i]) {
+                freebytes(x->aOuts[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+            if (x->aOutsTmp[i]) {
+                freebytes(x->aOutsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+        freebytes(x->aOuts, x->nOut * sizeof(t_sample *));
+    }
+
+    // memory allocation
+    x->aIns = (t_sample **)getbytes(x->nIn * sizeof(t_sample *));
+    x->aInsTmp = (t_sample **)getbytes(x->nIn * sizeof(t_sample *));
+    x->aOuts = (t_sample **)getbytes(x->nOut * sizeof(t_sample *));
+    x->aOutsTmp = (t_sample **)getbytes(x->nOut * sizeof(t_sample *));
+
+    for (int i = 0; i < x->nIn; i++) {
+        x->aIns[i] = (t_sample *)getbytes(x->nAmbiFrameSize * sizeof(t_sample));
+        x->aInsTmp[i] = (t_sample *)getbytes(x->nAmbiFrameSize * sizeof(t_sample));
+    }
+    for (int i = 0; i < x->nOut; i++) {
+        x->aOuts[i] = (t_sample *)getbytes(x->nAmbiFrameSize * sizeof(t_sample));
+        x->aOutsTmp[i] = (t_sample *)getbytes(x->nAmbiFrameSize * sizeof(t_sample));
+    }
+    x->nPreviousIn = x->nIn;
+    x->nPreviousOut = x->nOut;
+}
+
+// ─────────────────────────────────────
 static void pitchshifter_tilde_set(t_pitchshifter_tilde *x, t_symbol *s, int argc, t_atom *argv) {
     const char *method = atom_getsymbol(argv)->s_name;
 
@@ -55,149 +99,190 @@ static void pitchshifter_tilde_set(t_pitchshifter_tilde *x, t_symbol *s, int arg
     }
 }
 
-// ╭─────────────────────────────────────╮
-// │     Initialization and Perform      │
-// ╰─────────────────────────────────────╯
+// ─────────────────────────────────────
+t_int *pitchshifter_tilde_performmultichannel(t_int *w) {
+    t_pitchshifter_tilde *x = (t_pitchshifter_tilde *)(w[1]);
+    int n = (int)(w[2]);
+    t_sample *ins = (t_sample *)(w[3]);
+    t_sample *outs = (t_sample *)(w[4]);
+
+    if (n < x->nAmbiFrameSize) {
+        for (int ch = 0; ch < x->nIn; ch++) {
+            memcpy(x->aIns[ch] + x->nInAccIndex, ins + (n * ch), n * sizeof(t_sample));
+        }
+        x->nInAccIndex += n;
+
+        // Process only if a full frame is ready
+        if (x->nInAccIndex == x->nAmbiFrameSize) {
+            pitch_shifter_process(x->hAmbi, (const float *const *)x->aIns, (float *const *)x->aOuts,
+                                  x->nIn, x->nOut, x->nAmbiFrameSize);
+            x->nInAccIndex = 0;
+            x->nOutAccIndex = 0; // Reset for the next frame
+        }
+
+        if (x->nOutAccIndex + n <= x->nAmbiFrameSize) {
+            // Copy valid processed data
+            for (int ch = 0; ch < x->nOut; ch++) {
+                memcpy(outs + (n * ch), x->aOuts[ch] + x->nOutAccIndex, n * sizeof(t_sample));
+            }
+            x->nOutAccIndex += n;
+        } else {
+            for (int ch = 0; ch < x->nOut; ch++) {
+                memset(outs + (n * ch), 0, n * sizeof(t_sample));
+            }
+        }
+    } else {
+        int chunks = n / x->nAmbiFrameSize;
+        for (int chunkIndex = 0; chunkIndex < chunks; chunkIndex++) {
+            // Copia os dados de entrada para cada canal
+            for (int ch = 0; ch < x->nIn; ch++) {
+                memcpy(x->aInsTmp[ch], (t_sample *)w[3] + ch * n + chunkIndex * x->nAmbiFrameSize,
+                       x->nAmbiFrameSize * sizeof(t_sample));
+            }
+            // Processa o bloco atual
+            pitch_shifter_process(x->hAmbi, (const float *const *)x->aInsTmp,
+                                  (float *const *)x->aOutsTmp, x->nIn, x->nOut, x->nAmbiFrameSize);
+
+            t_sample *out = (t_sample *)(w[4]);
+            // Copia o resultado para os canais de saída com o offset correto
+            for (int ch = 0; ch < x->nOut; ch++) {
+                memcpy(out + ch * n + chunkIndex * x->nAmbiFrameSize, x->aOutsTmp[ch],
+                       x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+    }
+
+    return (w + 5);
+}
+
+// ─────────────────────────────────────
 t_int *pitchshifter_tilde_perform(t_int *w) {
     t_pitchshifter_tilde *x = (t_pitchshifter_tilde *)(w[1]);
     int n = (int)(w[2]);
 
-    if (n <= x->ambiFrameSize) {
-        // Accumulate input samples
-        for (int ch = 0; ch < x->nSH; ch++) {
-            memcpy(x->ins[ch] + x->accumSize, (t_sample *)w[3 + ch], n * sizeof(t_sample));
+    if (n < x->nAmbiFrameSize) {
+        for (int ch = 0; ch < x->nIn; ch++) {
+            memcpy(x->aIns[ch] + x->nInAccIndex, (t_sample *)w[3 + ch], n * sizeof(t_sample));
         }
-        x->accumSize += n;
-        // Process only when we have a full ambisonic frame
-        if (x->accumSize == x->ambiFrameSize) {
-            pitch_shifter_process(x->hAmbi, (const float *const *)x->ins, (float **)x->outs, x->nSH,
-                                  x->num_loudspeakers, x->ambiFrameSize);
-            x->accumSize = 0;
-            x->outputIndex = 0;
+        x->nInAccIndex += n;
+        if (x->nInAccIndex == x->nAmbiFrameSize) {
+            pitch_shifter_process(x->hAmbi, (const float *const *)x->aIns, (float *const *)x->aOuts,
+                                  x->nIn, x->nOut, x->nAmbiFrameSize);
+            x->nInAccIndex = 0;
+            x->nOutAccIndex = 0;
         }
-        // Output the processed samples in blocks
-        for (int ch = 0; ch < x->num_loudspeakers; ch++) {
-            t_sample *out = (t_sample *)(w[3 + x->nSH + ch]);
-            memcpy(out, x->outs[ch] + x->outputIndex, n * sizeof(t_sample));
+        for (int ch = 0; ch < x->nOut; ch++) {
+            t_sample *out = (t_sample *)(w[3 + x->nIn + ch]);
+            memcpy(out, x->aOuts[ch] + x->nOutAccIndex, n * sizeof(t_sample));
         }
-        x->outputIndex += n;
+        x->nOutAccIndex += n;
     } else {
-        // When n is greater than ambiFrameSize (e.g., frameSize=64 and n=128)
-        int chunks = n / x->ambiFrameSize;
+        int chunks = n / x->nAmbiFrameSize;
         for (int chunkIndex = 0; chunkIndex < chunks; chunkIndex++) {
-            // Process each full chunk separately
-            for (int ch = 0; ch < x->nSH; ch++) {
-                memcpy(x->ins_tmp[ch], (t_sample *)w[3 + ch] + (chunkIndex * x->ambiFrameSize),
-                       x->ambiFrameSize * sizeof(t_sample));
+            for (int ch = 0; ch < x->nIn; ch++) {
+                memcpy(x->aInsTmp[ch], (t_sample *)w[3 + ch] + (chunkIndex * x->nAmbiFrameSize),
+                       x->nAmbiFrameSize * sizeof(t_sample));
             }
-            pitch_shifter_process(x->hAmbi, (const float *const *)x->ins_tmp, (float **)x->outs_tmp,
-                                  x->nSH, x->num_loudspeakers, x->ambiFrameSize);
-            for (int ch = 0; ch < x->num_loudspeakers; ch++) {
-                t_sample *out = (t_sample *)(w[3 + x->nSH + ch]);
-                memcpy(out + (chunkIndex * x->ambiFrameSize), x->outs_tmp[ch],
-                       x->ambiFrameSize * sizeof(t_sample));
+            pitch_shifter_process(x->hAmbi, (const float *const *)x->aInsTmp,
+                                  (float *const *)x->aOutsTmp, x->nIn, x->nOut, x->nAmbiFrameSize);
+            for (int ch = 0; ch < x->nOut; ch++) {
+                t_sample *out = (t_sample *)(w[3 + x->nIn + ch]);
+                memcpy(out + (chunkIndex * x->nAmbiFrameSize), x->aOutsTmp[ch],
+                       x->nAmbiFrameSize * sizeof(t_sample));
             }
         }
     }
 
-    return (w + 3 + x->nSH + x->num_loudspeakers);
+    return (w + 3 + x->nIn + x->nOut);
 }
 
 // ─────────────────────────────────────
 void pitchshifter_tilde_dsp(t_pitchshifter_tilde *x, t_signal **sp) {
+    // This is a mess! Help is you see a better way.
+
+    // pitch_shifter_getFrameSize has fixed frameSize, for pitchshifter is 64 for
+    // decoder is 128. In the perform method sometimes I need to accumulate samples sometimes I
+    // need to process 2 or more times to avoid change how pitch_shifter_ works. I think that in
+    // this way is more safe, once that these functions are tested in the main repo. But maybe worse
+    // to implement the own set of functions.
+
     // Set frame sizes and reset indices
-    x->ambiFrameSize = pitch_shifter_getFrameSize();
-    x->pdFrameSize = sp[0]->s_n;
-    x->outputIndex = 0;
-    x->accumSize = 0;
-    int sum = x->nSH + x->num_loudspeakers;
+    x->nAmbiFrameSize = pitch_shifter_getFrameSize();
+    x->nPdFrameSize = sp[0]->s_n;
+    x->nOutAccIndex = 0;
+    x->nInAccIndex = 0;
+    int sum = x->nIn + x->nOut;
     int sigvecsize = sum + 2;
-    t_int *sigvec = getbytes(sigvecsize * sizeof(t_int));
 
-    // Setup multi-out signals
-    for (int i = x->nSH; i < sum; i++) {
-        signal_setmultiout(&sp[i], 1);
-    }
-
-    if (pitch_shifter_getProgressBar0_1(x->hAmbi) != 1 &&
-        pitch_shifter_getProgressBar0_1(x->hAmbi) == 0) {
+    // Initialize the ambisonic pitchshifter
+    if (!x->hAmbiInit) {
         pitch_shifter_init(x->hAmbi, sys_getsr());
-        pitch_shifter_initCodec(x->hAmbi);
+        x->hAmbiInit = 1;
     }
 
-    sigvec[0] = (t_int)x;
-    sigvec[1] = (t_int)sp[0]->s_n;
-    for (int i = 0; i < sum; i++) {
-        sigvec[2 + i] = (t_int)sp[i]->s_vec;
+    if (x->multichannel) {
+        x->nIn = sp[0]->s_nchans;
+        pitch_shifter_setNumChannels(x->hAmbi, x->nIn);
     }
 
-    // Allocate arrays for input and output
-    x->ins = (t_sample **)getbytes(x->nSH * sizeof(t_sample *));
-    x->outs = (t_sample **)getbytes(x->num_loudspeakers * sizeof(t_sample *));
-    // IMPORTANT: Allocate ins_tmp based on num_sources (not nSH) to match processing below.
-    x->ins_tmp = (t_sample **)getbytes(x->nSH * sizeof(t_sample *));
-    x->outs_tmp = (t_sample **)getbytes(x->num_loudspeakers * sizeof(t_sample *));
+    if (x->nPreviousIn != x->nIn || x->nPreviousOut != x->nOut) {
+        pitchshifter_tilde_malloc(x);
+    }
 
-    for (int i = 0; i < x->nSH; i++) {
-        x->ins[i] = (t_sample *)getbytes(x->ambiFrameSize * sizeof(t_sample));
-        for (int j = 0; j < x->ambiFrameSize; j++) {
-            x->ins[i][j] = 0;
+    // add perform method
+    if (x->multichannel) {
+        x->nIn = sp[0]->s_nchans;
+        signal_setmultiout(&sp[1], x->nOut);
+        dsp_add(pitchshifter_tilde_performmultichannel, 4, x, sp[0]->s_n, sp[0]->s_vec,
+                sp[1]->s_vec);
+    } else {
+        for (int i = x->nIn; i < sum; i++) {
+            signal_setmultiout(&sp[i], 1);
         }
-        x->ins_tmp[i] = (t_sample *)getbytes(sp[0]->s_n * sizeof(t_sample));
-    }
-
-    for (int i = 0; i < x->num_loudspeakers; i++) {
-        x->outs[i] = (t_sample *)getbytes(x->ambiFrameSize * sizeof(t_sample));
-        for (int j = 0; j < x->ambiFrameSize; j++) {
-            x->outs[i][j] = 0;
+        t_int *sigvec = getbytes(sigvecsize * sizeof(t_int));
+        sigvec[0] = (t_int)x;
+        sigvec[1] = (t_int)sp[0]->s_n;
+        for (int i = 0; i < sum; i++) {
+            sigvec[2 + i] = (t_int)sp[i]->s_vec;
         }
-        x->outs_tmp[i] = (t_sample *)getbytes(sp[0]->s_n * sizeof(t_sample));
+        dsp_addv(pitchshifter_tilde_perform, sigvecsize, sigvec);
+        freebytes(sigvec, sigvecsize * sizeof(t_int));
     }
-
-    dsp_addv(pitchshifter_tilde_perform, sigvecsize, sigvec);
-    freebytes(sigvec, sigvecsize * sizeof(t_int));
 }
 
 // ─────────────────────────────────────
 void *pitchshifter_tilde_new(t_symbol *s, int argc, t_atom *argv) {
-    // TODO:
     t_pitchshifter_tilde *x = (t_pitchshifter_tilde *)pd_new(pitchshifter_tilde_class);
-    x->glist = canvas_getcurrent();
-    int order = 1;
-    int num_loudspeakers = 2;
-    int fft_size = 1024;
-
-    if (argc >= 1) {
-        order = atom_getint(argv);
-    }
-    if (argc >= 2) {
-        num_loudspeakers = atom_getint(argv + 1);
-    }
-    if (argc >= 3) {
-        fft_size = atom_getint(argv + 2);
+    int order = (argc >= 1) ? atom_getint(argv) : 1;
+    int num_sources = (argc >= 2) ? atom_getint(argv + 1) : 1;
+    x->multichannel = (argc >= 3) ? strcmp(atom_getsymbol(argv + 2)->s_name, "-m") == 0 : 0;
+    if (argc < 2) {
+        pd_error(x, "[saf.pitchshifter~] Wrong number of arguments, use [saf.pitchshifter~ "
+                    "<speakers_count> "
+                    "<sources>");
+        return NULL;
     }
 
-    order = order < 0 ? 0 : order;
-    num_loudspeakers = num_loudspeakers < 1 ? 1 : num_loudspeakers;
-
-    x->order = (int)floor(sqrt(num_loudspeakers) - 1);
-    x->nSH = (order + 1) * (order + 1);
-    x->num_loudspeakers = num_loudspeakers;
-    if (x->order < 1) {
-        pd_error(x, "[saf.pitchshifter~] Minimal order is 1 (requires at least 4 loudspeakers). "
-                    "Falling back to binaural mode.");
-    }
+    order = order < 1 ? 1 : order;
+    num_sources = num_sources < 1 ? 1 : num_sources;
+    x->hAmbiInit = 0;
 
     pitch_shifter_create(&x->hAmbi);
-    pitch_shifter_setFFTSizeOption(x->hAmbi, fft_size);
-    pitch_shifter_setNumChannels(x->hAmbi, x->nSH);
+    pitch_shifter_setNumChannels(x->hAmbi, num_sources);
+    x->nOrder = order;
+    x->nIn = num_sources;
+    x->nOut = (order + 1) * (order + 1);
+    x->nInAccIndex = 0;
 
-    for (int i = 1; i < x->nSH; i++) {
-        inlet_new(&x->obj, &x->obj.ob_pd, &s_signal, &s_signal);
-    }
-
-    for (int i = 0; i < x->num_loudspeakers; i++) {
+    if (x->multichannel) {
         outlet_new(&x->obj, &s_signal);
+    } else {
+        for (int i = 1; i < x->nIn; i++) {
+            inlet_new(&x->obj, &x->obj.ob_pd, &s_signal, &s_signal);
+        }
+        for (int i = 0; i < x->nOut; i++) {
+            outlet_new(&x->obj, &s_signal);
+        }
     }
 
     return (void *)x;
@@ -206,28 +291,39 @@ void *pitchshifter_tilde_new(t_symbol *s, int argc, t_atom *argv) {
 // ─────────────────────────────────────
 void pitchshifter_tilde_free(t_pitchshifter_tilde *x) {
     pitch_shifter_destroy(&x->hAmbi);
-    if (x->ins) {
-        for (int i = 0; i < x->nSH; i++) {
-            freebytes(x->ins[i], x->ambiFrameSize * sizeof(t_sample));
-            freebytes(x->ins_tmp[i], x->ambiFrameSize * sizeof(t_sample));
+    for (int i = 0; i < x->nIn; i++) {
+        if (x->aIns) {
+            freebytes(x->aIns[i], x->nAmbiFrameSize * sizeof(t_sample));
         }
-        freebytes(x->ins, x->nSH * sizeof(t_sample *));
-        freebytes(x->ins_tmp, x->nSH * sizeof(t_sample));
+        if (x->aInsTmp) {
+            freebytes(x->aInsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+        }
+    }
+    for (int i = 0; i < x->nOut; i++) {
+        if (x->aOuts) {
+            freebytes(x->aOuts[i], x->nAmbiFrameSize * sizeof(t_sample));
+        }
+        if (x->aOutsTmp) {
+            freebytes(x->aOutsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+        }
     }
 
-    if (x->outs) {
-        for (int i = 0; i < x->num_loudspeakers; i++) {
-            freebytes(x->outs[i], x->ambiFrameSize * sizeof(t_sample));
-            freebytes(x->outs_tmp[i], x->ambiFrameSize * sizeof(t_sample));
-        }
-        freebytes(x->ins, x->num_loudspeakers * sizeof(t_sample *));
-        freebytes(x->outs_tmp, x->num_loudspeakers * sizeof(t_sample *));
+    if (x->aIns) {
+        freebytes(x->aIns, x->nIn * sizeof(t_sample *));
+    }
+    if (x->aInsTmp) {
+        freebytes(x->aInsTmp, x->nIn * sizeof(t_sample *));
+    }
+    if (x->aOuts) {
+        freebytes(x->aOuts, x->nOut * sizeof(t_sample *));
+    }
+    if (x->aOutsTmp) {
+        freebytes(x->aOutsTmp, x->nOut * sizeof(t_sample *));
     }
 }
 
 // ─────────────────────────────────────
 void setup_saf0x2epitchshifter_tilde(void) {
-
     pitchshifter_tilde_class =
         class_new(gensym("saf.pitchshifter~"), (t_newmethod)pitchshifter_tilde_new,
                   (t_method)pitchshifter_tilde_free, sizeof(t_pitchshifter_tilde),
