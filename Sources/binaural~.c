@@ -296,7 +296,7 @@ void binaural_tilde_dsp(t_binaural_tilde *x, t_signal **sp) {
 
     // add this in another thread
     if (ambi_bin_getProgressBar0_1(x->hAmbi) != 1 && ambi_bin_getProgressBar0_1(x->hAmbi) == 0) {
-        // Initialize the ambisonic encoder
+        ambi_bin_setYaw(x->hAmbi, 180.0f);
         ambi_bin_init(x->hAmbi, sys_getsr());
         logpost(x, 2, "[saf.decoder~] initializing decoder codec...");
         pthread_t initThread;

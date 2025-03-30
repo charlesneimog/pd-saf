@@ -1,16 +1,16 @@
-local meter = pd.Class:new():register("mc.meter~")
+local mcmeter = pd.Class:new():register("mc.meter~")
 
 -- ─────────────────────────────────────
-function meter:initialize(name, args)
+function mcmeter:initialize(_, args)
 	self.inlets = { SIGNAL }
 	self.outlets = 0
 	self.inchans = 4
 	self.meter_width = 6
-	self.height = 80
+	self.height = 120
 	self.frames = 20
 	self.width = self.meter_width * self.inchans
-	self:set_size(self.width, self.height)
 	self.neednewrms = true
+	self.needdraw = true
 
 	for i, arg in ipairs(args) do
 		if arg == "-frame" then
@@ -19,17 +19,22 @@ function meter:initialize(name, args)
 			self.meter_width = type(args[i + 1]) == "number" and args[i + 1] or 4
 		elseif arg == "-inchs" then
 			self.inchans = type(args[i + 1]) == "number" and args[i + 1] or 1
-		end
-	end
+		elseif arg == "-height" then
+			self.height= type(args[i + 1]) == "number" and args[i + 1] or 4
+	    end
+    end
+	self:set_size(self.width, self.height)
 	return true
 end
 
 -- ─────────────────────────────────────
-function meter:update_args()
+function mcmeter:update_args()
 	local args = {
 		"-width",
 		self.meter_width,
 	}
+	table.insert(args, "-height")
+	table.insert(args, self.height)
 	table.insert(args, "-frames")
 	table.insert(args, self.frames)
 	table.insert(args, "-inchs")
@@ -38,128 +43,161 @@ function meter:update_args()
 end
 
 -- ─────────────────────────────────────
-function meter:postinitialize()
+function mcmeter:postinitialize()
 	self.clock = pd.Clock:new():register(self, "tick")
 	self.clock:delay(0)
 end
 
 -- ─────────────────────────────────────
-function meter:tick()
+function mcmeter:tick()
 	self:repaint(3)
 	self.clock:delay(1 / self.frames * 1000)
 	self.neednewrms = true
 end
 
 -- ─────────────────────────────────────
-function meter:in_1_reload()
+function mcmeter:in_1_reload()
 	self:dofilex(self._scriptname)
 	self:initialize("", {})
 	self:repaint()
 end
 
 -- ─────────────────────────────────────
-function meter:in_1_frames(args)
+function mcmeter:in_1_frames(args)
 	self.frames = args[1]
 	if self.frames < 1 then
-		self:error("[mc.meter~] Invalid frames value")
+		self:error("[mc.meter~] invalid frames value")
 		self.frames = 30
 		return
 	end
 	self:update_args()
 end
+
 -- ─────────────────────────────────────
-function meter:in_1_width(args)
+function mcmeter:in_1_width(args)
 	self.meter_width = args[1]
 	if self.meter_width < 1 then
-		self:error("[mc.meter~] Invalid width value")
+		self:error("[mc.meter~] invalid width value")
 		self.meter_width = 1
+	end
+
+	self.width = self.meter_width * self.inchans
+	if self.width < 8 then
+		self:error("[mc.meter~] total width can't be less than 8")
+		self.width = 8
+		self.meter_width = math.floor(8 / self.inchans + 0.5)
 	end
 	self:set_size(self.inchans * self.meter_width, self.height)
 	self:repaint()
-	self:repaint(1)
-	self:repaint(2)
-	self:repaint(3)
 	self:update_args()
 end
 
 -- ─────────────────────────────────────
-function meter:dsp(samplerate, blocksize, inchans)
+function mcmeter:in_1_height(args)
+	self.height = args[1]
+	self:set_size(self.inchans * self.meter_width, self.height)
+	self:repaint()
+	self:update_args()
+end
+
+-- ─────────────────────────────────────
+function mcmeter:dsp(samplerate, blocksize, inchans)
 	self.blocksize = blocksize
 	self.inchans = inchans[1]
 	self.samplerate = samplerate
 	self.width = self.meter_width * self.inchans
-	self:set_size(self.width, 80)
+	if self.width < 8 then
+		self:error("[mc.meter~] total width can't be less than 8")
+		self.width = 8
+		self.meter_width = math.floor(8 / self.inchans + 0.5)
+	end
+	self.meters = {}
+	for i = 1, self.inchans do
+		self.meters[i] = { rms = 0, clipped_warning = false }
+	end
+
+	self:set_size(self.width, self.height)
 	self:repaint(1)
 	self:repaint(2)
 end
 
 -- ─────────────────────────────────────
-function meter:perform(in1)
+function mcmeter:perform(in1)
 	self.invectorsize = self.blocksize * self.inchans
 	if not self.neednewrms then
 		if #in1 ~= self.invectorsize then
 			self.inchans = #in1 / self.blocksize
 			self:set_size(self.inchans * self.meter_width, self.height)
 		end
+		return
 	end
-
-	self.rms = {} -- Initialize/reset RMS table
 	for ch = 1, self.inchans do
 		local sum = 0
-		local start_idx = (ch - 1) * self.blocksize + 1 -- Start index for this channel
-		local end_idx = ch * self.blocksize -- End index for this channel
-
-		-- Compute RMS for the channel
+		local start_idx = (ch - 1) * self.blocksize + 1
+		local end_idx = ch * self.blocksize
 		for i = start_idx, end_idx do
-			sum = sum + in1[i] * in1[i] -- Square each sample and sum
+			sum = sum + in1[i] * in1[i]
 		end
-
-		self.rms[ch] = math.sqrt(sum / self.blocksize) -- Final RMS calculation
+		self.meters[ch].rms = math.sqrt(sum / self.blocksize)
 	end
 	self.neednewrms = false
+	self.needdraw = true
 end
 
 --╭─────────────────────────────────────╮
 --│                PAINT                │
 --╰─────────────────────────────────────╯
-function meter:paint(g)
+function mcmeter:paint(g)
 	g:set_color(244, 244, 244)
 	g:fill_all()
+	g:stroke_rect(0, 0, self.width, self.height, 2)
+	self:repaint(2)
 end
 
 -- ─────────────────────────────────────
-function meter:paint_layer_2(g)
+function mcmeter:paint_layer_2(g)
 	local pos_v = 0
-	for i = 1, self.inchans do
+
+	for _ = 1, self.inchans do
 		g:set_color(0, 0, 0)
 		g:stroke_rect(pos_v, 0, self.meter_width, self.height, 1)
+		pos_v = pos_v + self.meter_width
+	end
+
+	pos_v = 0
+	for _ = 1, self.inchans do
+		g:set_color(80 + 0 * 155, 80 + 1 * 155, 80)
+		local green_base_y = self.height - 3
+		g:fill_rect(pos_v + 1, green_base_y + 1, self.meter_width - 2, 1)
+
 		pos_v = pos_v + self.meter_width
 	end
 end
 
 -- ─────────────────────────────────────
-function meter:paint_layer_3(g)
-	if not self.rms then
+function mcmeter:paint_layer_3(g)
+	if not self.meters then
 		return
 	end
 
 	local pos_v = 0
 	for ch = 1, self.inchans do
-		local rms_value = self.rms[ch] or 0
-		local meter_height = (self.height * 0.9) * rms_value
-		if rms_value > 1 then
-			meter_height = 1
+		local rms_value = self.meters[ch].rms or 0
+		local clamped_rms = math.min(math.max(rms_value, 0), 1)
+		local meter_height = math.min(self.height * clamped_rms, self.height - 2)
+		meter_height = math.max(meter_height, 0)
+		local fill_y = self.height - meter_height - 1
+		local r = math.min(2 * clamped_rms, 1)
+		local g_val = math.min(2 * (1 - clamped_rms), 1)
+		g:set_color(80 + r * 155, 80 + g_val * 155, 80)
+		if meter_height > 0 then
+			g:fill_rect(pos_v + 1, fill_y, self.meter_width - 2, meter_height)
 		end
-
-		if meter_height < 1 then
-			meter_height = 1
+		local green_base_y = self.height - 3
+		g:fill_rect(pos_v + 1, green_base_y, self.meter_width - 2, 2)
+		if meter_height >= 2 then
+			g:fill_rect(pos_v + 1, green_base_y, self.meter_width - 2, 1)
 		end
-		local r = math.min(2 * rms_value, 1) -- Increases from 0 → 1
-		local g_val = math.min(2 * (1 - rms_value), 1) -- Decreases from 1 → 0
-
-		g:set_color(80 + r * 155, 80 + g_val * 155, 100)
-		g:fill_rect(pos_v + 1, self.height - meter_height, self.meter_width - 2, meter_height)
-
-		pos_v = pos_v + self.meter_width -- Move to the next meter
+		pos_v = pos_v + self.meter_width
 	end
 end

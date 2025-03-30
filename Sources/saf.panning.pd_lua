@@ -1,25 +1,26 @@
 local panning = pd.Class:new():register("saf.panning")
 
 -- ─────────────────────────────────────
-function panning:initialize(name, args)
+function panning:initialize(_, args)
 	self.inlets = 1
 	self.outlets = 1
 	if args == nil then
 		args[1] = 1
 	end
-	self.size = 150
+	self.size = 200
 	self:set_size(self.size, self.size)
 	self.repaint_sources = false
 	self.selected = false
+	self.margin = 5
 
 	-- Define colors with appropriate RGB values
 	self.colors = {
-		background1 = { 38, 48, 100}, -- obj color
-		background2 = { 48, 58, 100}, -- obj inside circle
-		lines = { 150, 150, 200 }, -- lines
-		text = { 50, 50, 50 }, -- text
+		background1 = { 19, 47, 80 },
+		background2 = { 27, 55, 87 }, -- obj inside circle
+		lines = { 46, 73, 102 }, -- lines
+		text = { 127, 145, 162 }, -- text
 		sources = { 255, 0, 0 },
-		source_text = { 0, 0, 0 },
+		source_text = { 230, 230, 240 },
 	}
 
 	self.sources = {}
@@ -38,13 +39,17 @@ end
 -- ─────────────────────────────────────
 function panning:create_newsource(i)
 	local center_x, center_y = self:get_size() / 2, self:get_size() / 2
-	local distance = self.size / 3
+	local margin = self.margin -- Margin to keep the sources within the circle
+	local max_radius = (self.size / 2) - margin
 	local angle_step = (math.pi * 2) / self.sources_size
-	local angle = i * angle_step
+	local angle = (i - 1) * angle_step -- Correct the angle increment (starting at 0)
+	local distance = max_radius * 0.9 -- Ensure sources are slightly inside the circle
+
 	local x = center_x + math.cos(angle) * distance
 	local y = center_y + math.sin(angle) * distance
 
 	return {
+		i = i,
 		x = x,
 		y = y,
 		size = 8,
@@ -61,6 +66,30 @@ function panning:in_1_reload()
 	self:dofilex(self._scriptname)
 	self:initialize("", {})
 	self:repaint()
+end
+
+-- ─────────────────────────────────────
+function panning:in_1_source(args)
+	local index = args[1]
+	local azi = math.rad(args[2])
+	local ele = math.rad(args[3])
+	if index > self.sources_size then
+		self.sources_size = index
+		self:in_1_sources({ index })
+	end
+
+	local x = math.cos(ele) * math.cos(azi + 90)
+	local y = math.cos(ele) * math.sin(azi + 90)
+
+	for _, source in pairs(self.sources) do
+		if source.i == index then
+			local adjusted_radius = (self.size / 2) - self.margin
+			source.x = (x * adjusted_radius) + self.size / 2
+			source.y = (y * adjusted_radius) + self.size / 2
+		end
+	end
+
+	self:repaint(2)
 end
 
 -- ─────────────────────────────────────
@@ -83,13 +112,17 @@ end
 function panning:in_1_sources(args)
 	local num_circles = args[1]
 	local center_x, center_y = self:get_size() / 2, self:get_size() / 2
-	local distance = self.size / 3
 	local angle_step = (math.pi * 2) / num_circles -- Espaçamento angular
+	self.sources_size = args[1]
 
-	self.sources = {} -- Resetando a lista de círculos
+	self.sources = {}
+
+	local margin = 10 -- Same margin used before
+	local max_radius = (math.min(center_x, center_y) / 2) - margin
+	local distance = max_radius * 0.9 -- Keep sources slightly inside the inner circle
 
 	for i = 1, num_circles do
-		local angle = i * angle_step -- Ângulo progressivo para cada círculo
+		local angle = i * angle_step -- Progressively increase the angle for each circle
 		self.sources[i] = self:create_newsource(i)
 		self.sources[i].x = center_x + math.cos(angle) * distance
 		self.sources[i].y = center_y + math.sin(angle) * distance
@@ -114,7 +147,17 @@ function panning:mouse_drag(x, y)
 			self.sources[i].x = x
 			self.sources[i].y = y
 			self.sources[i].fill = true
-			self:outlet(1, "list", { i, x, y })
+
+			-- TODO: Add z here
+			local r = math.sqrt(x ^ 2 + y ^ 2)
+			local azi = math.atan(y, x)
+			local ele = math.atan(0, r)
+
+			local azi_degrees = azi * (180 / math.pi)
+			local ele_degrees = ele * (180 / math.pi)
+
+			-- Output with azimuth and elevation in degrees
+			self:outlet(1, "source", { i, azi_degrees, ele_degrees })
 		else
 			self.sources[i].fill = false
 		end
@@ -176,16 +219,26 @@ function panning:paint(g)
 	g:set_color(table.unpack(self.colors.background1))
 	g:fill_all()
 	g:set_color(table.unpack(self.colors.background2))
-	g:fill_ellipse(0, 0, size_x, size_y)
+	g:fill_ellipse(self.margin, self.margin, size_x - 2 * self.margin, size_y - 2 * self.margin)
 
 	-- Lines
 	g:set_color(table.unpack(self.colors.lines))
 	local center = size_x / 2
-	g:draw_line(center, 0, center, self.size, 1)
-	g:draw_line(0, center, self.size, center, 1)
+
+	-- Adjusted vertical and horizontal lines
+	g:draw_line(center, self.margin, center, size_y - self.margin, 1)
+	g:draw_line(self.margin, center, size_x - self.margin, center, 1)
+
+	-- Lines from center to border (radial lines)
+	local base_radius = (math.min(size_x, size_y) / 2) - self.margin -- Radius of the circle
+	for angle = 0, 2 * math.pi, math.pi / 8 do -- Change the angle increment for more/less lines
+		local x_end = center + math.cos(angle) * base_radius
+		local y_end = center + math.sin(angle) * base_radius
+		g:draw_line(center, center, x_end, y_end, 1) -- Line from center to border
+	end
 
 	-- Ellipses
-	local base_size = math.min(size_x, size_y) / 2
+	local base_size = (math.min(size_x, size_y) / 2) - self.margin
 	for i = 0, 3 do
 		local scale = math.log(i + 1) / math.log(6)
 		local radius_x = base_size * (1 - scale)
@@ -205,17 +258,23 @@ end
 function panning:paint_layer_2(g)
 	for i, source in pairs(self.sources) do
 		if not self.sources[i].selected then
-			local x = source.x - (source.size / 2)
-			local y = source.y - (source.size / 2)
+			-- Using the center of the circle, not the bottom-left corner
+			local x = source.x
+			local y = source.y
 			local size = source.size
+
+			-- Adjusting the drawing to make the ellipse centered at (x, y)
 			g:set_color(table.unpack(source.color))
-			g:stroke_ellipse(x, y, size, size, 1)
+			g:stroke_ellipse(x - (size / 2), y - (size / 2), size, size, 1)
 
 			local scale_factor = 0.7
 			g:scale(scale_factor, scale_factor)
+
+			-- Adjust the position of the text to be centered around the circle
 			local text_x, text_y = x - (size / 3), y - (size / 3)
-			g:set_color(table.unpack(self.colors.source_text)) -- Use source_text color
-			g:draw_text(tostring(i), text_x / scale_factor, text_y / scale_factor, 20, 3)
+			g:set_color(table.unpack(self.colors.source_text))
+			g:draw_text(tostring(i), text_x / scale_factor + 2, text_y / scale_factor + 2, 20, 3)
+
 			g:reset_transform()
 		end
 	end

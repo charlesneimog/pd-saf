@@ -4,6 +4,7 @@
 #include <g_canvas.h>
 
 #include <ambi_enc.h>
+#include "utilities.h"
 
 static t_class *encoder_tilde_class;
 
@@ -112,7 +113,7 @@ static void encoder_tilde_set(t_encoder_tilde *x, t_symbol *s, int argc, t_atom 
         x->nIn = sources;
         canvas_update_dsp();
         canvas_resume_dsp(state);
-    } else{
+    } else {
         pd_error(x, "[saf.encoder~] Unknown set method: %s", method);
     }
 }
@@ -240,6 +241,10 @@ void encoder_tilde_dsp(t_encoder_tilde *x, t_signal **sp) {
     x->nPdFrameSize = sp[0]->s_n;
     x->nOutAccIndex = 0;
     x->nInAccIndex = 0;
+
+    x->nIn = x->multichannel ? sp[0]->s_nchans : x->nIn;
+    x->nOrder = get_ambisonic_order(x->nIn);
+
     int sum = x->nIn + x->nOut;
     int sigvecsize = sum + 2;
 
@@ -248,17 +253,12 @@ void encoder_tilde_dsp(t_encoder_tilde *x, t_signal **sp) {
         ambi_enc_init(x->hAmbi, sys_getsr());
         ambi_enc_setOutputOrder(x->hAmbi, (SH_ORDERS)x->nOrder);
         ambi_enc_setNumSources(x->hAmbi, x->nIn);
-        if (ambi_enc_getNSHrequired(x->hAmbi) < x->nOut) {
-            pd_error(x, "[saf.encoder~] Number of output signals is too low for the %d order.",
+        if (ambi_enc_getNSHrequired(x->hAmbi) > x->nOut) {
+            pd_error(x, "[saf.encoder~] number of output signals is too low for the %d order.",
                      x->nOrder);
             return;
         }
         x->hAmbiInit = 1;
-    }
-
-    if (x->multichannel) {
-        x->nIn = sp[0]->s_nchans;
-        ambi_enc_setNumSources(x->hAmbi, x->nIn);
     }
 
     if (x->nPreviousIn != x->nIn || x->nPreviousOut != x->nOut) {
@@ -268,7 +268,6 @@ void encoder_tilde_dsp(t_encoder_tilde *x, t_signal **sp) {
     // add perform method
     if (x->multichannel) {
         x->nIn = sp[0]->s_nchans;
-        ambi_enc_setNumSources(x->hAmbi, x->nIn);
         signal_setmultiout(&sp[1], x->nOut);
         dsp_add(encoder_tilde_performmultichannel, 4, x, sp[0]->s_n, sp[0]->s_vec, sp[1]->s_vec);
     } else {
@@ -300,13 +299,12 @@ void *encoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
 
     order = order < 1 ? 1 : order;
     num_sources = num_sources < 1 ? 1 : num_sources;
-    x->hAmbiInit = 0;
 
     ambi_enc_create(&x->hAmbi);
     x->nOrder = order;
     x->nIn = num_sources;
     x->nOut = (order + 1) * (order + 1);
-    x->nInAccIndex = 0;
+    x->hAmbiInit = 0;
 
     if (x->multichannel) {
         outlet_new(&x->obj, &s_signal);

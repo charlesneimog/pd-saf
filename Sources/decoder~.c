@@ -7,6 +7,7 @@
 #include <s_stuff.h>
 
 #include <ambi_dec.h>
+#include "utilities.h"
 
 static t_class *decoder_tilde_class;
 
@@ -17,6 +18,7 @@ typedef struct _binauraliser_tilde {
     t_sample sample;
 
     void *hAmbi;
+    int hAmbiInit;
 
     t_sample **aIns;
     t_sample **aOuts;
@@ -110,6 +112,9 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
         t_float binaural = atom_getfloat(argv + 1);
         ambi_dec_setBinauraliseLSflag(x->hAmbi, binaural);
         logpost(x, 2, "[saf.decoder~] reinit decoder codec...");
+        pthread_t initThread;
+        pthread_create(&initThread, NULL, decoder_tilde_initcodec, (void *)x);
+        pthread_detach(initThread);
     } else if (strcmp(method, "defaultHRIR") == 0) {
         t_float defaultHRIR = atom_getfloat(argv + 1);
         ambi_dec_setUseDefaultHRIRsflag(x->hAmbi, defaultHRIR);
@@ -282,19 +287,34 @@ void decoder_tilde_dsp(t_decoder_tilde *x, t_signal **sp) {
     x->nPdFrameSize = sp[0]->s_n;
     x->nOutAccIndex = 0;
     x->nInAccIndex = 0;
+    x->nIn = x->multichannel ? sp[0]->s_nchans : x->nIn;
 
-    // add this in another thread
-    if (x->nOrder < 1) {
-        ambi_dec_setBinauraliseLSflag(x->hAmbi, 1);
-    }
-
-    if (ambi_dec_getProgressBar0_1(x->hAmbi) != 1 && ambi_dec_getProgressBar0_1(x->hAmbi) == 0) {
-        // Initialize the ambisonic encoder
+    int nOrder = get_ambisonic_order(x->nOut);
+    if (nOrder != x->nOrder || !x->hAmbiInit) {
+        ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_4);
+        ambi_dec_setMasterDecOrder(x->hAmbi, nOrder);
+        ambi_dec_setUseDefaultHRIRsflag(x->hAmbi, 1);
         ambi_dec_init(x->hAmbi, sys_getsr());
+
+        int required = ambi_dec_getNSHrequired(x->hAmbi);
+        if (required > x->nOut) {
+            pd_error(x, "[saf.decoder~] %d output signals is too low for the %d order.", required,
+                     x->nOrder);
+            return;
+        }
+
         logpost(x, 2, "[saf.decoder~] initializing decoder codec...");
         pthread_t initThread;
         pthread_create(&initThread, NULL, decoder_tilde_initcodec, (void *)x);
         pthread_detach(initThread);
+        x->hAmbiInit = 1;
+    }
+    x->nOrder = nOrder;
+
+    // add this in another thread
+    if (x->nOrder < 1) {
+        ambi_dec_setBinauraliseLSflag(x->hAmbi, 1);
+        logpost(x, 2, "[saf.decoder~] Order too low, enabling binauralisation...");
     }
 
     if (x->nPreviousIn != x->nIn || x->nPreviousOut != x->nOut) {
@@ -347,6 +367,7 @@ void *decoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
         pd_error(x, "[saf.decoder~] Minimal order is 1 (requires at least 4 loudspeakers). "
                     "Falling back to binaural mode.");
     }
+    x->hAmbiInit = 0;
     ambi_dec_create(&x->hAmbi);
 
     if (x->multichannel) {

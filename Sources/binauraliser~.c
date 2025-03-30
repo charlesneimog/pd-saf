@@ -7,6 +7,7 @@
 #include <s_stuff.h>
 
 #include <binauraliser.h>
+#include "utilities.h"
 
 static t_class *binauraliser_tilde_class;
 
@@ -17,6 +18,7 @@ typedef struct _binauraliser_tilde {
     t_sample sample;
 
     void *hAmbi;
+    int hAmbiInit;
 
     t_sample **aIns;
     t_sample **aOuts;
@@ -131,7 +133,7 @@ t_int *binauraliser_tilde_performmultichannel(t_int *w) {
 
         if (x->nInAccIndex == x->nAmbiFrameSize) {
             binauraliser_process(x->hAmbi, (const float *const *)x->aIns, (float *const *)x->aOuts,
-                             x->nIn, x->nOut, x->nAmbiFrameSize);
+                                 x->nIn, x->nOut, x->nAmbiFrameSize);
             x->nInAccIndex = 0;
             x->nOutAccIndex = 0;
         }
@@ -156,7 +158,7 @@ t_int *binauraliser_tilde_performmultichannel(t_int *w) {
             }
             // Processa o bloco atual
             binauraliser_process(x->hAmbi, (const float *const *)x->aInsTmp,
-                             (float *const *)x->aOutsTmp, x->nIn, x->nOut, x->nAmbiFrameSize);
+                                 (float *const *)x->aOutsTmp, x->nIn, x->nOut, x->nAmbiFrameSize);
 
             t_sample *out = (t_sample *)(w[4]);
             for (int ch = 0; ch < x->nOut; ch++) {
@@ -181,7 +183,7 @@ t_int *binauraliser_tilde_perform(t_int *w) {
         x->nInAccIndex += n;
         if (x->nInAccIndex == x->nAmbiFrameSize) {
             binauraliser_process(x->hAmbi, (const float *const *)x->aIns, (float *const *)x->aOuts,
-                             x->nIn, x->nOut, x->nAmbiFrameSize);
+                                 x->nIn, x->nOut, x->nAmbiFrameSize);
             x->nInAccIndex = 0;
             x->nOutAccIndex = 0;
         }
@@ -198,7 +200,7 @@ t_int *binauraliser_tilde_perform(t_int *w) {
                        x->nAmbiFrameSize * sizeof(t_sample));
             }
             binauraliser_process(x->hAmbi, (const float *const *)x->aInsTmp,
-                             (float *const *)x->aOutsTmp, x->nIn, x->nOut, x->nAmbiFrameSize);
+                                 (float *const *)x->aOutsTmp, x->nIn, x->nOut, x->nAmbiFrameSize);
             for (int ch = 0; ch < x->nOut; ch++) {
                 t_sample *out = (t_sample *)(w[3 + x->nIn + ch]);
                 memcpy(out + (chunkIndex * x->nAmbiFrameSize), x->aOutsTmp[ch],
@@ -217,14 +219,17 @@ void binauraliser_tilde_dsp(t_binauraliser_tilde *x, t_signal **sp) {
     x->nPdFrameSize = sp[0]->s_n;
     x->nOutAccIndex = 0;
     x->nInAccIndex = 0;
+    x->nIn = x->multichannel ? sp[0]->s_nchans : x->nIn;
 
-    if (binauraliser_getProgressBar0_1(x->hAmbi) != 1 && binauraliser_getProgressBar0_1(x->hAmbi) == 0) {
-        // Initialize the ambisonic encoder
+    int nOrder = get_ambisonic_order(x->nOut);
+    if (nOrder != x->nOrder || !x->hAmbiInit) {
+        binauraliser_setUseDefaultHRIRsflag(x->hAmbi, 1);
         binauraliser_init(x->hAmbi, sys_getsr());
-        logpost(x, 2, "[saf.binauraliser~] initializing decoder codec...");
+        logpost(x, 2, "[saf.decoder~] initializing decoder codec...");
         pthread_t initThread;
         pthread_create(&initThread, NULL, binauraliser_tilde_initcodec, (void *)x);
         pthread_detach(initThread);
+        x->hAmbiInit = 1;
     }
 
     if (x->nPreviousIn != x->nIn || x->nPreviousOut != x->nOut) {
@@ -233,8 +238,10 @@ void binauraliser_tilde_dsp(t_binauraliser_tilde *x, t_signal **sp) {
 
     // Initialize memory allocation for inputs and outputs
     if (x->multichannel) {
+        x->nIn = sp[0]->s_nchans;
         signal_setmultiout(&sp[1], x->nOut);
-        dsp_add(binauraliser_tilde_performmultichannel, 4, x, sp[0]->s_n, sp[0]->s_vec, sp[1]->s_vec);
+        dsp_add(binauraliser_tilde_performmultichannel, 4, x, sp[0]->s_n, sp[0]->s_vec,
+                sp[1]->s_vec);
     } else {
         int sum = x->nIn + x->nOut;
         int sigvecsize = sum + 2;
@@ -328,12 +335,14 @@ void binauraliser_tilde_free(t_binauraliser_tilde *x) {
 
 // ─────────────────────────────────────
 void setup_saf0x2ebinauraliser_tilde(void) {
-    binauraliser_tilde_class = class_new(gensym("saf.binauraliser~"), (t_newmethod)binauraliser_tilde_new,
-                                    (t_method)binauraliser_tilde_free, sizeof(t_binauraliser_tilde),
-                                    CLASS_DEFAULT | CLASS_MULTICHANNEL, A_GIMME, 0);
+    binauraliser_tilde_class =
+        class_new(gensym("saf.binauraliser~"), (t_newmethod)binauraliser_tilde_new,
+                  (t_method)binauraliser_tilde_free, sizeof(t_binauraliser_tilde),
+                  CLASS_DEFAULT | CLASS_MULTICHANNEL, A_GIMME, 0);
 
     CLASS_MAINSIGNALIN(binauraliser_tilde_class, t_binauraliser_tilde, sample);
-    class_addmethod(binauraliser_tilde_class, (t_method)binauraliser_tilde_dsp, gensym("dsp"), A_CANT, 0);
-    class_addmethod(binauraliser_tilde_class, (t_method)binauraliser_tilde_set, gensym("set"), A_GIMME, 0);
+    class_addmethod(binauraliser_tilde_class, (t_method)binauraliser_tilde_dsp, gensym("dsp"),
+                    A_CANT, 0);
+    class_addmethod(binauraliser_tilde_class, (t_method)binauraliser_tilde_set, gensym("set"),
+                    A_GIMME, 0);
 }
-
