@@ -252,6 +252,13 @@ void encoder_tilde_dsp(t_encoder_tilde *x, t_signal **sp) {
     if (!x->hAmbiInit) {
         ambi_enc_init(x->hAmbi, sys_getsr());
         ambi_enc_setOutputOrder(x->hAmbi, (SH_ORDERS)x->nOrder);
+        int preset = get_source_config_preset(x->nIn);
+        if (preset == SOURCE_CONFIG_PRESET_DEFAULT) {
+            logpost(x, 3, "[saf.encoder~] default source config preset that is 4 inputs");
+            preset = SOURCE_CONFIG_PRESET_T_DESIGN_4;
+        }
+        ambi_enc_setInputConfigPreset(x->hAmbi, get_source_config_preset(x->nIn));
+
         ambi_enc_setNumSources(x->hAmbi, x->nIn);
         if (ambi_enc_getNSHrequired(x->hAmbi) > x->nOut) {
             pd_error(x, "[saf.encoder~] number of output signals is too low for the %d order.",
