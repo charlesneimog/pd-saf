@@ -16,10 +16,10 @@ function roompanning:initialize(_, args)
 
 	self.roomsize = { x = 5, y = 5, z = 5, prop = 40 }
 	self.loudspeakers = {
-		{ x = 0.1 * self.roomsize.prop, y = 0.1 * self.roomsize.prop, z = 0, size = 20 },
-		{ x = 0.1 * self.roomsize.prop, y = 4.5 * self.roomsize.prop, z = 0, size = 20 },
-		{ x = 4.7 * self.roomsize.prop, y = 0.1 * self.roomsize.prop, z = 0, size = 20 },
-		{ x = 4.7 * self.roomsize.prop, y = 4.5 * self.roomsize.prop, z = 0, size = 20 },
+		{ x = 0.1 * self.roomsize.prop, y = 0.1 * self.roomsize.prop, z = 0, size = 40 },
+		--{ x = 0.1 * self.roomsize.prop, y = 4.5 * self.roomsize.prop, z = 0, size = 20 },
+		--{ x = 4.7 * self.roomsize.prop, y = 0.1 * self.roomsize.prop, z = 0, size = 20 },
+		--{ x = 4.7 * self.roomsize.prop, y = 4.5 * self.roomsize.prop, z = 0, size = 20 },
 	}
 	self.sources = {}
 	self.receivers = {
@@ -198,38 +198,22 @@ end
 function roompanning:draw_loudspeaker(g, x, y, size)
 	-- Dimensões do corpo
 	local body_w, body_h = size * 0.5, size
-	local corner_radius = size * 0.1
+	-- Dimensões do alto-falante
+	local speaker_w = size * 0.3
+
 
 	-- Desenhar o corpo do alto-falante com cantos arredondados
 	g:set_color(0, 0, 0) -- Preto
-	g:fill_rounded_rect(x, y, body_w, body_h, corner_radius)
-
-	-- Desenhar os alto-falantes internos
-	local big_diameter = body_w * 0.7
-	local small_diameter = big_diameter * 0.5
-
-	-- Posicionamento dos alto-falantes
-	local big_x = x + (body_w - big_diameter) / 2
-	local big_y = y + body_h * 0.55
-	local small_x = x + (body_w - small_diameter) / 2
-	local small_y = y + body_h * 0.2
+	g:fill_rect(x, y, body_w, body_h)
 
 	-- Alto-falante maior (embaixo)
-	g:set_color(255, 255, 255) -- Branco para o contorno
-	g:fill_ellipse(big_x, big_y, big_diameter, big_diameter)
-	g:set_color(0, 0, 0) -- Preto para o centro
-	g:fill_ellipse(big_x + big_diameter * 0.3, big_y + big_diameter * 0.3, big_diameter * 0.4, big_diameter * 0.4)
+	g:set_color(255, 255, 255) 
+	g:stroke_ellipse(x + (body_w/2)-(speaker_w/2), y + (body_h/2)-(speaker_w/2)+10, speaker_w, speaker_w,2)
+	
+	if true then return end
 
-	-- Alto-falante menor (em cima)
-	g:set_color(255, 255, 255)
-	g:fill_ellipse(small_x, small_y, small_diameter, small_diameter)
-	g:set_color(0, 0, 0)
-	g:fill_ellipse(
-		small_x + small_diameter * 0.3,
-		small_y + small_diameter * 0.3,
-		small_diameter * 0.4,
-		small_diameter * 0.4
-	)
+
+	
 end
 
 -- ─────────────────────────────────────
@@ -251,7 +235,7 @@ function roompanning:paint(g)
 		for col = 1, cols do
 			local x = 1 + (col - 1) * rect_width
 			local y = 1 + (row - 1) * rect_height
-			g:stroke_rect(x, y, rect_width, rect_height, 1)
+			--g:stroke_rect(x, y, rect_width, rect_height, 1)
 		end
 	end
 
