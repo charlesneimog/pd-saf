@@ -78,6 +78,22 @@ static void ambiroom_tilde_malloc(t_ambi_roomsim_tilde *x) {
     x->nPreviousOut = x->nOut;
 }
 
+// ╭─────────────────────────────────────╮
+// │               Methods               │
+// ╰─────────────────────────────────────╯
+static void decoder_tilde_get(t_ambi_roomsim_tilde *x, t_symbol *s, int argc, t_atom *argv) {
+    // const char *method = atom_getsymbol(argv)->s_name;
+    // if (strcmp(method, "speakers") == 0) {
+    //     int speakers_size = ambi_dec_getNumLoudspeakers(x->hAmbi);
+    //     logpost(x, 2, "[saf.decoder~] There are %d speakers in the array", speakers_size);
+    //     for (int i = 0; i < speakers_size; i++) {
+    //         int azi = ambi_dec_getLoudspeakerAzi_deg(x->hAmbi, i);
+    //         int ele = ambi_dec_getLoudspeakerAzi_deg(x->hAmbi, i);
+    //         logpost(x, 2, "  index: %d | azi %d | ele %d", i + 1, azi, ele);
+    //     }
+    // }
+}
+
 // ─────────────────────────────────────
 static void ambiroom_tilde_set(t_ambi_roomsim_tilde *x, t_symbol *s, int argc, t_atom *argv) {
     const char *method = atom_getsymbol(argv)->s_name;
@@ -136,7 +152,7 @@ static void ambiroom_tilde_set(t_ambi_roomsim_tilde *x, t_symbol *s, int argc, t
     } else if (strcmp(method, "roomdimz") == 0) {
         float roomDimZ = atom_getfloat(argv + 1) - 1;
         ambi_roomsim_setRoomDimZ(x->hAmbi, roomDimZ);
-    } else if (strcmp(method, "room") == 0) {
+    } else if (strcmp(method, "roomdim") == 0) {
         // set room  <x> <y> <z>
         float pos_x = atom_getfloat(argv + 1);
         float pos_y = atom_getfloat(argv + 2);
@@ -314,6 +330,8 @@ void ambiroom_tilde_dsp(t_ambi_roomsim_tilde *x, t_signal **sp) {
         ambi_roomsim_init(x->hAmbi, sys_getsr());
         ambi_roomsim_setOutputOrder(x->hAmbi, (SH_ORDERS)x->nOrder);
         ambi_roomsim_setNumSources(x->hAmbi, x->nIn);
+        ambi_roomsim_setNumReceivers(x->hAmbi, 1);
+
         if (ambi_roomsim_getNSHrequired(x->hAmbi) < x->nOut) {
             pd_error(x, "[saf.encoder~] Number of output signals is too low for the %d order.",
                      x->nOrder);
@@ -367,12 +385,13 @@ void *ambiroom_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     order = order < 1 ? 1 : order;
     num_sources = num_sources < 1 ? 1 : num_sources;
     x->hAmbiInit = 0;
-
-    ambi_roomsim_create(&x->hAmbi);
     x->nOrder = order;
     x->nIn = num_sources;
     x->nOut = (order + 1) * (order + 1);
     x->nInAccIndex = 0;
+
+    ambi_roomsim_create(&x->hAmbi);
+    ambi_roomsim_setEnableIMSflag(x->hAmbi, 0);
 
     if (x->multichannel) {
         outlet_new(&x->obj, &s_signal);
@@ -420,12 +439,11 @@ void ambiroom_tilde_free(t_ambi_roomsim_tilde *x) {
     if (x->aOutsTmp) {
         freebytes(x->aOutsTmp, x->nOut * sizeof(t_sample *));
     }
-
 }
 
 // ─────────────────────────────────────
-void setup_saf0x2eambiroom_tilde(void) {
-    ambiroom_tilde_class = class_new(gensym("saf.encoder~"), (t_newmethod)ambiroom_tilde_new,
+void setup_saf0x2eroomsim_tilde(void) {
+    ambiroom_tilde_class = class_new(gensym("saf.roomsim~"), (t_newmethod)ambiroom_tilde_new,
                                      (t_method)ambiroom_tilde_free, sizeof(t_ambi_roomsim_tilde),
                                      CLASS_DEFAULT | CLASS_MULTICHANNEL, A_GIMME, 0);
 
