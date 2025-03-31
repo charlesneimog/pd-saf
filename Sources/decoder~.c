@@ -12,7 +12,7 @@
 static t_class *decoder_tilde_class;
 
 // ─────────────────────────────────────
-typedef struct _binauraliser_tilde {
+typedef struct _decoder_tilde {
     t_object obj;
     t_canvas *glist;
     t_sample sample;
@@ -93,6 +93,20 @@ void *decoder_tilde_initcodec(void *x_void) {
 // ╭─────────────────────────────────────╮
 // │               Methods               │
 // ╰─────────────────────────────────────╯
+static void decoder_tilde_get(t_decoder_tilde *x, t_symbol *s, int argc, t_atom *argv) {
+    const char *method = atom_getsymbol(argv)->s_name;
+    if (strcmp(method, "speakers") == 0) {
+        int speakers_size = ambi_dec_getNumLoudspeakers(x->hAmbi);
+        logpost(x, 2, "[saf.decoder~] There are %d speakers in the array", speakers_size);
+        for (int i = 0; i < speakers_size; i++) {
+            int azi = ambi_dec_getLoudspeakerAzi_deg(x->hAmbi, i);
+            int ele = ambi_dec_getLoudspeakerAzi_deg(x->hAmbi, i);
+            logpost(x, 2, "  index: %02d | azi %+04d | ele %+04d", i + 1, azi, ele);
+        }
+    }
+}
+
+// ─────────────────────────────────────
 static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom *argv) {
     const char *method = atom_getsymbol(argv)->s_name;
     if (strcmp(method, "sofafile") == 0) {
@@ -291,7 +305,13 @@ void decoder_tilde_dsp(t_decoder_tilde *x, t_signal **sp) {
 
     int nOrder = get_ambisonic_order(x->nOut);
     if (nOrder != x->nOrder || !x->hAmbiInit) {
-        ambi_dec_setOutputConfigPreset(x->hAmbi, LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_4);
+        int preset = get_loudspeaker_array_preset(x->nOut);
+        if (preset == LOUDSPEAKER_ARRAY_PRESET_DEFAULT) {
+            logpost(x, 3, "[saf.decoder~] default loudspeaker preset is 4 speakers");
+            preset = LOUDSPEAKER_ARRAY_PRESET_T_DESIGN_4;
+        }
+        ambi_dec_setNumLoudspeakers(x->hAmbi, x->nOut);
+        ambi_dec_setOutputConfigPreset(x->hAmbi, preset);
         ambi_dec_setMasterDecOrder(x->hAmbi, nOrder);
         ambi_dec_setUseDefaultHRIRsflag(x->hAmbi, 1);
         ambi_dec_init(x->hAmbi, sys_getsr());
@@ -370,6 +390,10 @@ void *decoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     x->hAmbiInit = 0;
     ambi_dec_create(&x->hAmbi);
 
+    int preset = get_loudspeaker_array_preset(x->nOut);
+    ambi_dec_setNumLoudspeakers(x->hAmbi, x->nOut);
+    ambi_dec_setOutputConfigPreset(x->hAmbi, preset);
+
     if (x->multichannel) {
         outlet_new(&x->obj, &s_signal);
     } else {
@@ -430,4 +454,5 @@ void setup_saf0x2edecoder_tilde(void) {
     CLASS_MAINSIGNALIN(decoder_tilde_class, t_decoder_tilde, sample);
     class_addmethod(decoder_tilde_class, (t_method)decoder_tilde_dsp, gensym("dsp"), A_CANT, 0);
     class_addmethod(decoder_tilde_class, (t_method)decoder_tilde_set, gensym("set"), A_GIMME, 0);
+    class_addmethod(decoder_tilde_class, (t_method)decoder_tilde_get, gensym("get"), A_GIMME, 0);
 }
