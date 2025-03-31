@@ -18,25 +18,63 @@ include(${PDCMAKE_FILE})
 # ╭──────────────────────────────────────╮
 # │               OpenBLAS               │
 # ╰──────────────────────────────────────╯
+set(BUILD_STATIC_LIBS ON)
+set(BUILD_WITHOUT_LAPACK OFF)
+set(BUILD_TESTING OFF)
+set(BUILD_LAPACK_DEPRECATED OFF)
+set(C_LAPACK ON)
+set(CBLAS OFF)
+
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "APPLE")
-    set(BUILD_STATIC_LIBS ON)
-    set(BUILD_WITHOUT_LAPACK OFF)
-    set(BUILD_TESTING OFF)
-    set(BUILD_LAPACK_DEPRECATED OFF)
-    set(C_LAPACK ON)
-    set(CBLAS OFF)
+    set(OPENBLAS_FILE "${CMAKE_BINARY_DIR}/OpenBLAS.zip")
+    set(OPENBLAS_SOURCE_DIR "${CMAKE_BINARY_DIR}/OpenBLAS") # Nome fixo da pasta extraída
+    set(OPENBLAS_TEMP_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-temp") # Pasta temporária
 
-    # Build OpenBLAS
-    add_subdirectory(Libraries/OpenBLAS EXCLUDE_FROM_ALL)
-    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/OpenBLAS/lapack-netlib/CBLAS/include/")
+    # Baixar OpenBLAS se não existir
+    if(NOT EXISTS ${OPENBLAS_FILE})
+        message(STATUS "Downloading OpenBLAS...")
+        file(
+            DOWNLOAD https://github.com/OpenMathLib/OpenBLAS/archive/8795fc7985635de1ecf674b87e2008a15097ffab.zip
+            ${OPENBLAS_FILE}
+            SHOW_PROGRESS
+            STATUS DOWNLOAD_STATUS)
+    endif()
 
-    # can't figure how to generate this
+    # Extrair OpenBLAS se o diretório não existir
+    if(NOT EXISTS ${OPENBLAS_SOURCE_DIR})
+        message(STATUS "Extracting OpenBLAS...")
+
+        if(WIN32)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E unzip ${OPENBLAS_FILE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        else()
+            execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzf ${OPENBLAS_FILE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        endif()
+
+        # Encontrar a pasta extraída (deve ser "OpenBLAS-<commit-hash>")
+        file(GLOB EXTRACTED_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-*")
+
+        # Renomear para o nome fixo
+        if(EXTRACTED_DIR)
+            file(RENAME "${EXTRACTED_DIR}" "${OPENBLAS_SOURCE_DIR}")
+        else()
+            message(FATAL_ERROR "OpenBLAS extraction failed! Folder not found.")
+        endif()
+    endif()
+
+    # Adicionar OpenBLAS ao projeto
+    add_subdirectory(${OPENBLAS_SOURCE_DIR} EXCLUDE_FROM_ALL)
+
+    # Incluir diretórios necessários
+    include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/CBLAS/include/")
+    include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include/")
+
+    # Gerar cabeçalho de manipulação do CBLAS
     set(CBLAS_MANGLING_HEADER "${CMAKE_CURRENT_BINARY_DIR}/cblas_mangling.h")
     file(WRITE "${CBLAS_MANGLING_HEADER}" "")
+
     include_directories("${CMAKE_CURRENT_BINARY_DIR}/")
 
-    # Build LAPACKE
-    include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/OpenBLAS/lapack-netlib/LAPACKE/include/")
+    # Definir bibliotecas
     set(LAPACKE_LIBRARY openblas)
     set(OPENBLAS_LIBRARY openblas)
 endif()
@@ -60,6 +98,10 @@ endif()
 add_subdirectory(Libraries/Spatial_Audio_Framework EXCLUDE_FROM_ALL)
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/include")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/framework/include/")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_options(-g)
+endif()
 
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │
@@ -92,12 +134,19 @@ file(GLOB PITCHSHIFTER_TILDE_SOURCE
 pd_add_external(saf.pitchshifter~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/pitchshifter~.c;${PITCHSHIFTER_TILDE_SOURCE}"
                 LINK_LIBRARIES saf)
 
+# ─────────────────────────────────────
+file(GLOB BINAURALIZER_SOURCE
+     "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/binauraliser/*.c")
+
+pd_add_external(saf.binauraliser~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binauraliser~.c;${BINAURALIZER_SOURCE}"
+                LINK_LIBRARIES saf)
+
 # ╭──────────────────────────────────────╮
 # │              DATA FILES              │
 # ╰──────────────────────────────────────╯
 file(GLOB HELP_PATCHES "${CMAKE_CURRENT_SOURCE_DIR}/Resources/*.pd")
 file(GLOB SOUNDS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/*.wav")
-file(GLOB LUA_OBJECTS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/*.pd_lua")
+file(GLOB LUA_OBJECTS "${CMAKE_CURRENT_SOURCE_DIR}/Sources/*.pd_lua")
 pd_add_datafile(saf.binaural~ "${HELP_PATCHES}")
 pd_add_datafile(saf.binaural~ "${SOUNDS}")
 pd_add_datafile(saf.binaural~ "${LUA_OBJECTS}")
