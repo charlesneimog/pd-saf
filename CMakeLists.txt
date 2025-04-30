@@ -22,7 +22,7 @@ set(BUILD_STATIC_LIBS ON)
 set(BUILD_WITHOUT_LAPACK OFF)
 set(BUILD_TESTING OFF)
 set(BUILD_LAPACK_DEPRECATED OFF)
-set(C_LAPACK ON)
+set(C_LAPACK OFF)
 set(CBLAS OFF)
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "APPLE")
@@ -34,7 +34,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "APPLE")
     if(NOT EXISTS ${OPENBLAS_FILE})
         message(STATUS "Downloading OpenBLAS...")
         file(
-            DOWNLOAD https://github.com/OpenMathLib/OpenBLAS/archive/8795fc7985635de1ecf674b87e2008a15097ffab.zip
+            DOWNLOAD https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.29/OpenBLAS-0.3.29.zip
             ${OPENBLAS_FILE}
             SHOW_PROGRESS
             STATUS DOWNLOAD_STATUS)
@@ -77,6 +77,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "APPLE")
     # Definir bibliotecas
     set(LAPACKE_LIBRARY openblas)
     set(OPENBLAS_LIBRARY openblas)
+
 endif()
 
 # ╭──────────────────────────────────────╮
@@ -102,6 +103,8 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framewo
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-g)
 endif()
+
+target_link_libraries(saf PUBLIC gfortran)
 
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │
