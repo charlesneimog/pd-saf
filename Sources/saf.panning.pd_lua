@@ -10,7 +10,7 @@ function panning:initialize(_, args)
 	self.fig_size = 200
 	self.sources_size = 3
 	self.margin = 5
-	self.xzview = 0
+	self.xzview = false
 
 	-- Define colors with appropriate RGB values
 	self.colors = {
@@ -102,13 +102,13 @@ end
 
 -- ─────────────────────────────────────
 function panning:in_1_xzview(args)
-	if args[1] == 1 and self.xzview ~= 1 then
-		self.xzview = 1
+	if args[1] == 1 then
+		self.xzview = true
 		self.fig_size = self.plan_size * 2
 		self:set_size(self.fig_size, self.plan_size)
 		self:update_args()
 	else
-		self.xzview = 0
+		self.xzview = false
 		self.fig_size = self.fig_size / 2
 		self:set_size(self.plan_size, self.fig_size)
 	end
@@ -116,11 +116,12 @@ end
 -- ─────────────────────────────────────
 function panning:in_1_source(args)
 	local index = args[1]
-	local azi = math.rad(args[2])
-	local ele = math.rad(args[3])
+	local azi_deg = args[2]
+	local ele_deg = args[3]
 	local dis = 0.8
+
 	if #args >= 4 then
-		dis = math.rad(args[4])
+		dis = args[4]
 	end
 
 	if index > self.sources_size then
@@ -128,19 +129,20 @@ function panning:in_1_source(args)
 		self:in_1_sources({ index })
 	end
 
-	-- Adjust the x, y, z positions to fit inside the ellipse boundary
 	local adjusted_radius = (self.plan_size / 2) - self.margin
-	local x = math.cos(ele) * math.cos(azi + 90) * adjusted_radius
-	local y = math.cos(ele) * math.sin(azi + 90) * adjusted_radius
+	local azi_rad = math.rad(azi_deg)
+	local ele_rad = math.rad(ele_deg)
 
-	-- For z, we scale it based on the elevation angle and the adjusted radius
-	local z = math.sin(ele) * adjusted_radius
+	-- Flip X so +90° is left, -90° is right
+	local x = -math.cos(ele_rad) * math.sin(azi_rad) * adjusted_radius
+	local y = -math.cos(ele_rad) * math.cos(azi_rad) * adjusted_radius
+	local z = math.sin(ele_rad) * adjusted_radius
 
 	for _, source in pairs(self.sources) do
 		if source.i == index then
 			source.x = x + self.plan_size / 2
 			source.y = y + self.plan_size / 2
-			source.z = z + self.plan_size / 2 -- Adjust z similarly to keep it within bounds
+			source.z = z + self.plan_size / 2
 		end
 	end
 
@@ -195,33 +197,37 @@ end
 --╰─────────────────────────────────────╯
 function panning:mouse_drag(x, y)
 	local size_x, size_y = self:get_size()
-	-- Verifica se o clique está dentro da área válida
+	local cx, cy = size_x / 2, size_y / 2
+
+	-- Ignore drags outside the margin
 	if x < 5 or x > (size_x - 5) or y < 5 or y > (size_y - 5) then
 		return
 	end
 
-	for i, _ in pairs(self.sources) do
-		if self.sources[i].selected then
-			self.sources[i].x = x
-			self.sources[i].y = y
-			self.sources[i].fill = true
+	for i, source in pairs(self.sources) do
+		if source.selected then
+			source.x = x
+			source.y = y
+			source.fill = true
 
-			-- TODO: Add z here
-			local r = math.sqrt(x ^ 2 + y ^ 2)
-			local azi = math.atan(y, x)
-			local ele = math.atan(0, r)
+			-- Convert screen position to centered coordinates
+			local dx = x - cx
+			local dy = y - cy
 
-			local azi_degrees = azi * (180 / math.pi)
-			local ele_degrees = ele * (180 / math.pi)
+			-- Apply inverse of the flipped X axis
+			local azi = math.atan(-dx, -dy) -- Invert X and Y to match ambisonic
+			local r = math.sqrt(dx * dx + dy * dy)
+			local ele = math.atan(0, r) -- Still flat, set z=0 for now
 
-			-- Output with azimuth and elevation in degrees
+			local azi_degrees = math.deg(azi)
+			local ele_degrees = math.deg(ele)
+
 			self:outlet(1, "source", { i, azi_degrees, ele_degrees })
 		else
-			self.sources[i].fill = false
+			source.fill = false
 		end
 	end
 
-	-- Repaint da interface gráfica
 	self:repaint(3)
 end
 
@@ -316,63 +322,65 @@ function panning:paint(g)
 	--╭─────────────────────────────────────╮
 	--│              WORLD TWO              │
 	--╰─────────────────────────────────────╯
-	g:set_color(table.unpack(self.colors.background2))
-	g:set_color(table.unpack(self.colors.background2))
-	-- Draw the circle (ellipse) at position (self.plan_size + self.margin, self.margin)
-	g:fill_ellipse(
-		self.plan_size + self.margin, -- X position of the ellipse's top-left corner
-		self.margin, -- Y position of the ellipse's top-left corner
-		size_x - 2 * self.margin, -- Width of the ellipse
-		size_y - 2 * self.margin -- Height of the ellipse
-	)
-	g:set_color(table.unpack(self.colors.lines))
-
-	-- Calculate the TRUE center of the circle (ellipse)
-	local ellipse_x = self.plan_size + self.margin
-	local ellipse_y = self.margin
-	local ellipse_width = size_x - 2 * self.margin
-	local ellipse_height = size_y - 2 * self.margin
-
-	-- True center coordinates of the ellipse/circle
-	local center_x = ellipse_x + ellipse_width / 2 -- Critical fix: X center
-	local center_y = ellipse_y + ellipse_height / 2 -- Critical fix: Y center
-	local radius = ellipse_width / 2 -- Assume circle (width = height)
-
-	local vertical_lines = 8
-	for i = 1, vertical_lines do
-		-- Vertical position of the chord (evenly spaced from bottom to top)
-		local y_line = center_y - radius + (i * (2 * radius / vertical_lines))
-
-		-- Horizontal offset (chord width) at this y_line
-		local x_offset = math.sqrt(radius ^ 2 - (y_line - center_y) ^ 2)
-
-		-- Draw the chord (no extra offsets needed; center_x is already correct)
-		g:draw_line(
-			center_x - x_offset, -- Left edge of chord
-			y_line, -- Y position
-			center_x + x_offset, -- Right edge of chord
-			y_line, -- Y position
-			1 -- Line thickness/color
+	if self.xzview then
+		g:set_color(table.unpack(self.colors.background2))
+		g:set_color(table.unpack(self.colors.background2))
+		-- Draw the circle (ellipse) at position (self.plan_size + self.margin, self.margin)
+		g:fill_ellipse(
+			self.plan_size + self.margin, -- X position of the ellipse's top-left corner
+			self.margin, -- Y position of the ellipse's top-left corner
+			size_x - 2 * self.margin, -- Width of the ellipse
+			size_y - 2 * self.margin -- Height of the ellipse
 		)
+		g:set_color(table.unpack(self.colors.lines))
+
+		-- Calculate the TRUE center of the circle (ellipse)
+		local ellipse_x = self.plan_size + self.margin
+		local ellipse_y = self.margin
+		local ellipse_width = size_x - 2 * self.margin
+		local ellipse_height = size_y - 2 * self.margin
+
+		-- True center coordinates of the ellipse/circle
+		local center_x = ellipse_x + ellipse_width / 2 -- Critical fix: X center
+		local center_y = ellipse_y + ellipse_height / 2 -- Critical fix: Y center
+		local radius = ellipse_width / 2 -- Assume circle (width = height)
+
+		local vertical_lines = 8
+		for i = 1, vertical_lines do
+			-- Vertical position of the chord (evenly spaced from bottom to top)
+			local y_line = center_y - radius + (i * (2 * radius / vertical_lines))
+
+			-- Horizontal offset (chord width) at this y_line
+			local x_offset = math.sqrt(radius ^ 2 - (y_line - center_y) ^ 2)
+
+			-- Draw the chord (no extra offsets needed; center_x is already correct)
+			g:draw_line(
+				center_x - x_offset, -- Left edge of chord
+				y_line, -- Y position
+				center_x + x_offset, -- Right edge of chord
+				y_line, -- Y position
+				1 -- Line thickness/color
+			)
+		end
+
+		for i = 3, 7 do
+			local circle_width = math.log(i) * (self.plan_size - self.margin)
+			g:stroke_ellipse(
+				self.plan_size + self.margin + (circle_width / 2),
+				self.margin,
+				(size_x - 2 * self.margin) - circle_width,
+				size_y - 2 * self.margin,
+				1
+			)
+		end
+
+		-- Text
+		text_x, text_y = 2 + self.plan_size, 1
+		g:set_color(table.unpack(self.colors.text))
+		g:draw_text("not finished yet", text_x, text_y, 50, 1)
+
+		g:draw_line(self.plan_size, 0, self.plan_size, self.plan_size, 1)
 	end
-
-	for i = 3, 7 do
-		local circle_width = math.log(i) * (self.plan_size - self.margin)
-		g:stroke_ellipse(
-			self.plan_size + self.margin + (circle_width / 2),
-			self.margin,
-			(size_x - 2 * self.margin) - circle_width,
-			size_y - 2 * self.margin,
-			1
-		)
-	end
-
-	-- Text
-	text_x, text_y = 2 + self.plan_size, 1
-	g:set_color(table.unpack(self.colors.text))
-	g:draw_text("not finished yet", text_x, text_y, 50, 1)
-
-	g:draw_line(self.plan_size, 0, self.plan_size, self.plan_size, 1)
 end
 
 -- -- ─────────────────────────────────────
@@ -389,7 +397,7 @@ function panning:paint_layer_2(g)
 			g:set_color(table.unpack(source.color))
 			g:stroke_ellipse(x - (size / 2), y - (size / 2), size, size, 1)
 
-			if self.xzview == 1 then
+			if self.xzview then
 				g:set_color(table.unpack(source.color))
 				g:stroke_ellipse(x - (size / 2) + self.plan_size, z - (size / 2), size, size, 1)
 			end
@@ -435,10 +443,12 @@ function panning:paint_layer_3(g)
 			g:reset_transform()
 
 			-- new
-			local z = source.z - (source.size / 2)
-			g:set_color(table.unpack(source.color))
-			g:fill_ellipse(x + self.plan_size, z, size, size)
-			g:stroke_ellipse(x + self.plan_size, z, size, size, 1)
+			if self.xzview then
+				local z = source.z - (source.size / 2)
+				g:set_color(table.unpack(source.color))
+				g:fill_ellipse(x + self.plan_size, z, size, size)
+				g:stroke_ellipse(x + self.plan_size, z, size, size, 1)
+			end
 
 			-- Source index text
 			-- local text_x, text_y = x - (size / 1.5), y - (size / 2)
