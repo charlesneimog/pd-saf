@@ -9,7 +9,7 @@ set(PDCMAKE_FILE ${CMAKE_BINARY_DIR}/pd.cmake)
 if(NOT EXISTS ${PDCMAKE_FILE})
     message(STATUS "Downloading pd.cmake")
     file(
-        DOWNLOAD https://raw.githubusercontent.com/pure-data/pd.cmake/refs/tags/v0.1.0/pd.cmake ${PDCMAKE_FILE}
+        DOWNLOAD https://raw.githubusercontent.com/pure-data/pd.cmake/refs/tags/v0.2.0/pd.cmake ${PDCMAKE_FILE}
         SHOW_PROGRESS
         STATUS DOWNLOAD_STATUS)
 endif()
@@ -25,7 +25,8 @@ set(BUILD_LAPACK_DEPRECATED OFF)
 set(C_LAPACK OFF)
 set(CBLAS OFF)
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "APPLE")
+
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(OPENBLAS_FILE "${CMAKE_BINARY_DIR}/OpenBLAS.zip")
     set(OPENBLAS_SOURCE_DIR "${CMAKE_BINARY_DIR}/OpenBLAS") # Nome fixo da pasta extraída
     set(OPENBLAS_TEMP_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-temp") # Pasta temporária
@@ -92,6 +93,8 @@ set(SAF_ENABLE_HADES_MODULE ON)
 if(NOT APPLE)
     set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
     add_definitions(-DSAF_USE_OPEN_BLAS_AND_LAPACKE)
+    target_link_libraries(saf PUBLIC gfortran)
+    set(CMAKE_EXE_LINKER_FLAGS "-static -static-libgfortran -static-libgcc")
 else()
     set(SAF_PERFORMANCE_LIB "SAF_USE_APPLE_ACCELERATE")
 endif()
@@ -103,10 +106,6 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framewo
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-g)
 endif()
-
-target_link_libraries(saf PUBLIC gfortran)
-set(CMAKE_EXE_LINKER_FLAGS "-static -static-libgfortran -static-libgcc")
-
 
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │
