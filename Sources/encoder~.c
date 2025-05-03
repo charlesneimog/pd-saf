@@ -85,14 +85,14 @@ static void encoder_tilde_set(t_encoder_tilde *x, t_symbol *s, int argc, t_atom 
         int postScaling = atom_getint(argv + 1);
         ambi_enc_setEnablePostScaling(x->hAmbi, postScaling);
     } else if (strcmp(method, "solo") == 0) {
-        int srcIdx = atom_getint(argv + 1); // Source index
-        int solo = atom_getint(argv + 2);   // Solo status
+        int srcIdx = atom_getint(argv + 1) - 1; // Source index
+        int solo = atom_getint(argv + 2);       // Solo status
         if (solo) {
             ambi_enc_setSourceSolo(x->hAmbi, srcIdx);
         } else {
             ambi_enc_setUnSolo(x->hAmbi);
         }
-    } else if (strcmp(method, "norm_type") == 0) {
+    } else if (strcmp(method, "normtype") == 0) {
         int newType = atom_getint(argv + 1);
         if (newType < 1 || newType > 3) {
             logpost(x, 1, "[saf.encoder~] norm_type must be 1-3");
@@ -102,17 +102,18 @@ static void encoder_tilde_set(t_encoder_tilde *x, t_symbol *s, int argc, t_atom 
             return;
         }
         ambi_enc_setNormType(x->hAmbi, newType);
-    } else if (strcmp(method, "source_gain") == 0) {
-        int srcIdx = atom_getint(argv + 1);      // Source index
+    } else if (strcmp(method, "sourcegain") == 0) {
+        int srcIdx = atom_getint(argv + 1) - 1;  // Source index
         float newGain = atom_getfloat(argv + 2); // Gain factor
         ambi_enc_setSourceGain(x->hAmbi, srcIdx, newGain);
-    } else if (strcmp(method, "num_sources") == 0) {
-        int state = canvas_suspend_dsp();
-        int sources = atom_getint(argv + 1);
-        ambi_enc_setNumSources(x->hAmbi, sources);
-        x->nIn = sources;
-        canvas_update_dsp();
-        canvas_resume_dsp(state);
+    // NOTE: Use snake in instead
+    // } else if (strcmp(method, "numsources") == 0) {
+    //     int state = canvas_suspend_dsp();
+    //     int sources = atom_getint(argv + 1);
+    //     ambi_enc_setNumSources(x->hAmbi, sources);
+    //     x->nIn = sources;
+    //     canvas_update_dsp();
+        // canvas_resume_dsp(state);
     } else {
         pd_error(x, "[saf.encoder~] Unknown set method: %s", method);
     }
@@ -366,9 +367,6 @@ void setup_saf0x2eencoder_tilde(void) {
     encoder_tilde_class = class_new(gensym("saf.encoder~"), (t_newmethod)encoder_tilde_new,
                                     (t_method)encoder_tilde_free, sizeof(t_encoder_tilde),
                                     CLASS_DEFAULT | CLASS_MULTICHANNEL, A_GIMME, 0);
-
-    logpost(NULL, 3, "[saf] is a pd version of Spatial Audio Framework by Leo McCormack");
-    logpost(NULL, 3, "[saf] pd-saf by Charles K. Neimog");
 
     CLASS_MAINSIGNALIN(encoder_tilde_class, t_encoder_tilde, sample);
     class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_dsp, gensym("dsp"), A_CANT, 0);

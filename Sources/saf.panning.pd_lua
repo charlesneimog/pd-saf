@@ -129,6 +129,7 @@ function panning:in_1_source(args)
 		self:in_1_sources({ index })
 	end
 
+	self:outlet(1, "source", { index, azi_deg, ele_deg })
 	local adjusted_radius = (self.plan_size / 2) - self.margin
 	local azi_rad = math.rad(azi_deg)
 	local ele_rad = math.rad(ele_deg)

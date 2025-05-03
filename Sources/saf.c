@@ -18,6 +18,9 @@ void saf_setup(void) {
     if (major < 0 && minor < 54) {
         return;
     }
+
+    logpost(0, 2, "\n[saf] pd-saf by Charles K. Neimog\n");
+
     saf_libclass =
         class_new(gensym("saf"), (t_newmethod)saf_new, 0, sizeof(t_saf), CLASS_NOINLET, 0);
 
