@@ -299,8 +299,8 @@ void *encoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
     int num_sources = (argc >= 2) ? atom_getint(argv + 1) : 1;
     x->multichannel = (argc >= 3) ? strcmp(atom_getsymbol(argv + 2)->s_name, "-m") == 0 : 0;
     if (argc < 2) {
-        pd_error(x, "[saf.encoder~] Wrong number of arguments, use [saf.encoder~ <speakers_count> "
-                    "<sources>");
+        pd_error(x, "[saf.encoder~] Wrong number of arguments, use [saf.encoder~ <ambisonic_order> "
+                    "<num_sources> ");
         return NULL;
     }
 
