@@ -105,6 +105,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 target_link_libraries(saf PUBLIC gfortran)
+set(CMAKE_EXE_LINKER_FLAGS "-static -static-libgfortran -static-libgcc")
+
 
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │
@@ -143,6 +145,8 @@ file(GLOB BINAURALIZER_SOURCE
 
 pd_add_external(saf.binauraliser~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binauraliser~.c;${BINAURALIZER_SOURCE}"
                 LINK_LIBRARIES saf)
+
+pd_add_external(pdsaf "${CMAKE_CURRENT_SOURCE_DIR}/Sources/saf.c" LINK_LIBRARIES saf EXTERNAL_NAME saf)
 
 # ╭──────────────────────────────────────╮
 # │              DATA FILES              │
