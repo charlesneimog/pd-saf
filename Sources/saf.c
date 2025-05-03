@@ -28,8 +28,10 @@ void saf_setup(void) {
         int result = sys_load_lib(cnv, requiredLibs[i]);
         if (!result) {
             pd_error(NULL,
-                     "[pd-saf] %s not installed, Gui objects will not work! Please, install pdlua",
+                     "[pd-saf] %s not installed, Gui objects will not work! Please, install pdlua!",
                      requiredLibs[i]);
+            post("[pd-saf]    Go to Help -> Find Externals");
+            post("[pd-saf]    Search for pdlua and install it");
         }
     }
 
