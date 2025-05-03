@@ -166,6 +166,10 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
     } else if (strcmp(method, "hrirpreproc") == 0) {
         int state = atom_getint(argv + 1);
         ambi_dec_setEnableHRIRsPreProc(x->hAmbi, state);
+        pthread_t initThread;
+        pthread_create(&initThread, NULL, decoder_tilde_initcodec, (void *)x);
+        pthread_detach(initThread);
+
     } else if (strcmp(method, "sourcepreset") == 0) {
         int preset = atom_getint(argv + 1);
         ambi_dec_setSourcePreset(x->hAmbi, preset);
@@ -178,10 +182,17 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
     } else if (strcmp(method, "normtype") == 0) {
         int type = atom_getint(argv + 1);
         ambi_dec_setNormType(x->hAmbi, type);
-    } else if (strcmp(method, "decMethod") == 0) {
-        int index = atom_getint(argv + 1);
+    } else if (strcmp(method, "decmethod") == 0) {
+        t_symbol *low_high = atom_getsymbol(argv + 1);
         int id = atom_getint(argv + 2);
-        ambi_dec_setDecMethod(x->hAmbi, index, id);
+        if (strcmp(low_high->s_name, "low") == 0) {
+            ambi_dec_setDecMethod(x->hAmbi, 0, id);
+        } else {
+            ambi_dec_setDecMethod(x->hAmbi, 1, id);
+        }
+        pthread_t initThread;
+        pthread_create(&initThread, NULL, decoder_tilde_initcodec, (void *)x);
+        pthread_detach(initThread);
     } else if (strcmp(method, "decenablemaxre") == 0) {
         int index = atom_getint(argv + 1);
         int id = atom_getint(argv + 2);

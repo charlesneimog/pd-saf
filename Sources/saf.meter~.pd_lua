@@ -1,4 +1,4 @@
-local mcmeter = pd.Class:new():register("mc.meter~")
+local mcmeter = pd.Class:new():register("saf.meter~")
 
 -- ─────────────────────────────────────
 function mcmeter:initialize(_, args)
