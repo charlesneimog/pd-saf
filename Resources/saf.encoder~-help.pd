@@ -1,4 +1,4 @@
-#N canvas 631 325 658 410 10;
+#N canvas 631 341 658 379 10;
 #X declare -lib saf;
 #X obj 12 118 r enc;
 #N canvas 965 30 938 1001 POSITIONS 0;
@@ -301,7 +301,7 @@
 #X text 126 175 saf.encoder~ <order> <n_of_sources>;
 #X obj 1 229 saf.binaural~ 1 2 -m, f 22;
 #X msg 12 70 source <source_index> <azi> <ele>;
-#N canvas 701 326 518 409 METHODS 1;
+#N canvas 965 552 938 479 METHODS 0;
 #X obj 9 367 outlet;
 #X obj 9 4 tgl 18 0 empty empty empty 0 -9 0 10 #fcfcfc #000000 #000000 0 1;
 #X msg 9 27 set solo 2 \$1;

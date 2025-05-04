@@ -25,9 +25,9 @@ SAF-PD is a collection of PureData external objects that bring professional spat
 
 - `saf.encoder~`: Ambisonic encoder (beta).
 - `saf.decoder~`: Ambisonic decoder (alpha).
+- `saf.roomsim~`: Shoebox room Ambisonic encoder (alpha).
 - `saf.binaural~`: Binaural Ambisonic decoder (alpha).
 - `saf.binauraliser~`: Binauraliser Ambisonic signals (alpha).
-- `saf.roomsim~`: Shoebox room Ambisonic encoder (alpha).
 - `saf.pitchshifter~`: Pitch shifter for ambisonic signals (alpha).
 
 ### Gui Objects
