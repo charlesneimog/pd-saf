@@ -34,26 +34,17 @@ SAF-PD is a collection of PureData external objects that bring professional spat
 
 - `saf.meter~`: Multichannel meter (beta).
 - `saf.panning`: Ambisonic panner (beta).
-- `saf.roompanning`: Room panner (beta).
+- `saf.roompanning`: Room panner (alpha).
+
+<img src="Resources/img/pd_saf_combined.png">
 
 ## License
 
-This library is dual-licensed:
-
-- Core modules: ISC License (permissive)
-- Optional modules: GPLv2 License
-
-See [LICENSE.md](LICENSE.md) for complete details.
+This project is under GPL3.
 
 ## Contributing
 
 Contributions are welcome! Please open an issue or pull request on GitHub.
-
-## Authors
-
-- Leo McCormack (lead developer)
-- SAF contributors.
-- Charles K. Neimog
 
 ## Support
 
