@@ -198,14 +198,6 @@ t_int *pitchshifter_tilde_perform(t_int *w) {
 
 // ─────────────────────────────────────
 void pitchshifter_tilde_dsp(t_pitchshifter_tilde *x, t_signal **sp) {
-    // This is a mess! Help is you see a better way.
-
-    // pitch_shifter_getFrameSize has fixed frameSize, for pitchshifter is 64 for
-    // decoder is 128. In the perform method sometimes I need to accumulate samples sometimes I
-    // need to process 2 or more times to avoid change how pitch_shifter_ works. I think that in
-    // this way is more safe, once that these functions are tested in the main repo. But maybe worse
-    // to implement the own set of functions.
-
     // Set frame sizes and reset indices
     x->nAmbiFrameSize = pitch_shifter_getFrameSize();
     x->nPdFrameSize = sp[0]->s_n;
@@ -228,6 +220,9 @@ void pitchshifter_tilde_dsp(t_pitchshifter_tilde *x, t_signal **sp) {
     if (x->nPreviousIn != x->nIn || x->nPreviousOut != x->nOut) {
         pitchshifter_tilde_malloc(x);
     }
+
+    pitch_shifter_initCodec(x->hAmbi);
+
 
     // add perform method
     if (x->multichannel) {
