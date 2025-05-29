@@ -26,7 +26,7 @@ set(C_LAPACK OFF)
 set(CBLAS OFF)
 
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT EMSCRIPTEN)
     set(OPENBLAS_FILE "${CMAKE_BINARY_DIR}/OpenBLAS.zip")
     set(OPENBLAS_SOURCE_DIR "${CMAKE_BINARY_DIR}/OpenBLAS") # Nome fixo da pasta extraída
     set(OPENBLAS_TEMP_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-temp") # Pasta temporária
@@ -79,6 +79,56 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(LAPACKE_LIBRARY openblas)
     set(OPENBLAS_LIBRARY openblas)
 
+elseif(EMSCRIPTEN)
+    set(OPENBLAS_FILE "${CMAKE_BINARY_DIR}/OpenBLAS.zip")
+    set(OPENBLAS_SOURCE_DIR "${CMAKE_BINARY_DIR}/OpenBLAS") # Nome fixo da pasta extraída
+    set(OPENBLAS_TEMP_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-temp") # Pasta temporária
+
+    # Baixar OpenBLAS se não existir
+    if(NOT EXISTS ${OPENBLAS_FILE})
+        message(STATUS "Downloading OpenBLAS...")
+        file(
+            DOWNLOAD https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.29/OpenBLAS-0.3.29.zip
+            ${OPENBLAS_FILE}
+            SHOW_PROGRESS
+            STATUS DOWNLOAD_STATUS)
+    endif()
+
+    # Extrair OpenBLAS se o diretório não existir
+    if(NOT EXISTS ${OPENBLAS_SOURCE_DIR})
+        message(STATUS "Extracting OpenBLAS...")
+        if(WIN32)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E unzip ${OPENBLAS_FILE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        else()
+            execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzf ${OPENBLAS_FILE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        endif()
+        file(GLOB EXTRACTED_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-*")
+        if(EXTRACTED_DIR)
+            file(RENAME "${EXTRACTED_DIR}" "${OPENBLAS_SOURCE_DIR}")
+        else()
+            message(FATAL_ERROR "OpenBLAS extraction failed! Folder not found.")
+        endif()
+    endif()
+
+    # Incluir diretórios necessários
+    include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/CBLAS/include/")
+    include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include/")
+
+    # Gerar cabeçalho de manipulação do CBLAS
+    set(CBLAS_MANGLING_HEADER "${CMAKE_CURRENT_BINARY_DIR}/cblas_mangling.h")
+    file(WRITE "${CBLAS_MANGLING_HEADER}" "")
+
+    set(LIB_OPENBLAS "${CMAKE_BINARY_DIR}/libopenblas.a")
+    if(NOT EXISTS ${LIB_OPENBLAS})
+        file(
+            DOWNLOAD https://github.com/charlesneimog/pd4web/raw/refs/heads/main/Resources/Wasm/libopenblas.a
+            ${LIB_OPENBLAS}
+            SHOW_PROGRESS
+            STATUS DOWNLOAD_STATUS)
+    endif()
+
+    set(LAPACKE_LIBRARY "${LIB_OPENBLAS}")
+    set(OPENBLAS_LIBRARY "${LIB_OPENBLAS}")
 endif()
 
 # ╭──────────────────────────────────────╮
@@ -102,14 +152,15 @@ add_subdirectory(Libraries/Spatial_Audio_Framework EXCLUDE_FROM_ALL)
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/include")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/framework/include/")
 
-if (NOT APPLE)
+if (NOT APPLE AND NOT EMSCRIPTEN)
     target_link_libraries(saf PUBLIC gfortran)
+
 endif()
 
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_compile_options(-g)
-endif()
+# if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+#     add_compile_options(-g)
+# endif()
 
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │
