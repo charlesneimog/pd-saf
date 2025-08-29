@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(saf)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 # ╭──────────────────────────────────────╮
 # │               pd.cmake               │
@@ -24,7 +25,6 @@ set(BUILD_TESTING OFF)
 set(BUILD_LAPACK_DEPRECATED OFF)
 set(C_LAPACK OFF)
 set(CBLAS OFF)
-
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT EMSCRIPTEN)
     set(OPENBLAS_FILE "${CMAKE_BINARY_DIR}/OpenBLAS.zip")
@@ -132,6 +132,29 @@ elseif(EMSCRIPTEN)
 endif()
 
 # ╭──────────────────────────────────────╮
+# │                FFTW3                 │
+# ╰──────────────────────────────────────╯
+cmake_policy(SET CMP0135 NEW)
+option(BUILD_SHARED_LIBS OFF)
+option(BUILD_TESTS OFF)
+set(FFTW3_FILE ${CMAKE_BINARY_DIR}/fftw-3.3.10.tar.gz)
+if(NOT EXISTS ${FFTW3_FILE})
+    message(STATUS "Downloading FFTW3")
+    file(
+        DOWNLOAD https://www.fftw.org/fftw-3.3.10.tar.gz ${FFTW3_FILE}
+        SHOW_PROGRESS
+        STATUS DOWNLOAD_STATUS)
+endif()
+
+file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/fftw-3.3.10.tar.gz DESTINATION
+     ${CMAKE_BINARY_DIR}/)
+
+add_subdirectory(${CMAKE_BINARY_DIR}/fftw-3.3.10 EXCLUDE_FROM_ALL)
+set_target_properties(fftw3 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(fftw3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+add_library(fftw3f ALIAS fftw3)
+
+# ╭──────────────────────────────────────╮
 # │                 SAF                  │
 # ╰──────────────────────────────────────╯
 set(SAF_BUILD_TESTS OFF)
@@ -139,6 +162,8 @@ set(SAF_BUILD_EXAMPLES OFF)
 set(SAF_ENABLE_SOFA_READER_MODULE ON)
 set(SAF_ENABLE_TRACKER_MODULE ON)
 set(SAF_ENABLE_HADES_MODULE ON)
+set(SAF_USE_FFTW ON)
+set(SAF_ENABLE_SIMD ON)
 
 if(NOT APPLE)
     set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
@@ -153,21 +178,17 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framewo
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/framework/include/")
 
 if (NOT APPLE AND NOT EMSCRIPTEN)
-    target_link_libraries(saf PUBLIC gfortran)
-
+    target_link_libraries(saf PUBLIC gfortran fftw3f)
 endif()
 
 
-# if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-#     add_compile_options(-g)
-# endif()
 
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │
 # ╰──────────────────────────────────────╯
 file(GLOB ENCODER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_enc/*.c")
 
-pd_add_external(saf.encoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/encoder~.c;${ENCODER_SRC}" LINK_LIBRARIES saf)
+pd_add_external(saf.encoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/encoder~.c;${ENCODER_SRC}" LINK_LIBRARIES saf fftw3f)
 
 # ──────────────────────────────────────
 file(GLOB saf_dec_SRC "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_dec/*.c")
