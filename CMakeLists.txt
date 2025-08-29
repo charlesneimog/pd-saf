@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
-project(saf)
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    project(saf)
+endif()
+
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 # ╭──────────────────────────────────────╮
@@ -63,7 +67,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT EMSCRIPTEN)
     endif()
 
     # Adicionar OpenBLAS ao projeto
-    add_subdirectory(${OPENBLAS_SOURCE_DIR} EXCLUDE_FROM_ALL)
+    add_subdirectory(${OPENBLAS_SOURCE_DIR} ${CMAKE_BINARY_DIR}/OpenBLAS EXCLUDE_FROM_ALL)
 
     # Incluir diretórios necessários
     include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/CBLAS/include/")
@@ -134,25 +138,28 @@ endif()
 # ╭──────────────────────────────────────╮
 # │                FFTW3                 │
 # ╰──────────────────────────────────────╯
-cmake_policy(SET CMP0135 NEW)
-option(BUILD_SHARED_LIBS OFF)
-option(BUILD_TESTS OFF)
-set(FFTW3_FILE ${CMAKE_BINARY_DIR}/fftw-3.3.10.tar.gz)
-if(NOT EXISTS ${FFTW3_FILE})
-    message(STATUS "Downloading FFTW3")
-    file(
-        DOWNLOAD https://www.fftw.org/fftw-3.3.10.tar.gz ${FFTW3_FILE}
-        SHOW_PROGRESS
-        STATUS DOWNLOAD_STATUS)
+if (NOT TARGET fftw3f)
+    cmake_policy(SET CMP0135 NEW)
+    option(BUILD_SHARED_LIBS OFF)
+    option(BUILD_TESTS OFF)
+    option(ENABLE_FLOAT ON)
+
+    set(FFTW3_FILE ${CMAKE_BINARY_DIR}/fftw-3.3.10.tar.gz)
+    if(NOT EXISTS ${FFTW3_FILE})
+        message(STATUS "Downloading FFTW3")
+        file(
+            DOWNLOAD https://www.fftw.org/fftw-3.3.10.tar.gz ${FFTW3_FILE}
+            SHOW_PROGRESS
+            STATUS DOWNLOAD_STATUS)
+    endif()
+
+    file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/fftw-3.3.10.tar.gz DESTINATION
+         ${CMAKE_BINARY_DIR}/)
+
+    add_subdirectory(${CMAKE_BINARY_DIR}/fftw-3.3.10 ${CMAKE_BINARY_DIR}/fftw3f EXCLUDE_FROM_ALL)
+    set_target_properties(fftw3f PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
+    set_target_properties(fftw3f PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
-
-file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/fftw-3.3.10.tar.gz DESTINATION
-     ${CMAKE_BINARY_DIR}/)
-
-add_subdirectory(${CMAKE_BINARY_DIR}/fftw-3.3.10 EXCLUDE_FROM_ALL)
-set_target_properties(fftw3 PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_target_properties(fftw3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
-add_library(fftw3f ALIAS fftw3)
 
 # ╭──────────────────────────────────────╮
 # │                 SAF                  │
@@ -173,15 +180,13 @@ else()
     set(SAF_PERFORMANCE_LIB "SAF_USE_APPLE_ACCELERATE")
 endif()
 
-add_subdirectory(Libraries/Spatial_Audio_Framework EXCLUDE_FROM_ALL)
+add_subdirectory(Libraries/Spatial_Audio_Framework ${CMAKE_BINARY_DIR}/Spatial_Audio_Framework EXCLUDE_FROM_ALL)
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/include")
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/framework/include/")
 
 if (NOT APPLE AND NOT EMSCRIPTEN)
     target_link_libraries(saf PUBLIC gfortran fftw3f)
 endif()
-
-
 
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │

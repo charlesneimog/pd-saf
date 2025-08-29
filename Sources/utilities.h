@@ -1,3 +1,6 @@
+#ifndef SAF_UTILITIES_H
+#define SAF_UTILITIES_H
+
 #include <m_pd.h>
 #include <math.h>
 
@@ -13,13 +16,13 @@
     } while (0)
 
 // ─────────────────────────────────────
-int get_ambisonic_order(int nIn) {
+static inline int get_ambisonic_order(int nIn) {
     int order = (int)(sqrt(nIn) - 1);
     return (order + 1) * (order + 1) == nIn ? order : -1; // Return -1 if invalid
 }
 
 // ─────────────────────────────────────
-int get_source_config_preset(int num_inputs) {
+static inline int get_source_config_preset(int num_inputs) {
     switch (num_inputs) {
     case 1:
         return SOURCE_CONFIG_PRESET_MONO;
@@ -83,7 +86,7 @@ int get_source_config_preset(int num_inputs) {
 }
 
 // ─────────────────────────────────────
-int get_loudspeaker_array_preset(int num_inputs) {
+static inline int get_loudspeaker_array_preset(int num_inputs) {
     switch (num_inputs) {
     case 2:
         return LOUDSPEAKER_ARRAY_PRESET_STEREO;
@@ -145,3 +148,5 @@ int get_loudspeaker_array_preset(int num_inputs) {
         return LOUDSPEAKER_ARRAY_PRESET_DEFAULT; // Default preset
     }
 }
+
+#endif
