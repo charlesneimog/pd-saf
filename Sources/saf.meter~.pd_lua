@@ -83,7 +83,6 @@ function mcmeter:in_1_width(args)
 
 	self.width = self.meter_width * self.inchans
 	if self.width < 8 then
-		self:error("[mc.meter~] total width can't be less than 8")
 		self.width = 8
 		self.meter_width = math.floor(8 / self.inchans + 0.5)
 	end
@@ -107,7 +106,6 @@ function mcmeter:dsp(samplerate, blocksize, inchans)
 	self.samplerate = samplerate
 	self.width = self.meter_width * self.inchans
 	if self.width < 8 then
-		self:error("[mc.meter~] total width can't be less than 8")
 		self.width = 8
 		self.meter_width = math.floor(8 / self.inchans + 0.5)
 	end
