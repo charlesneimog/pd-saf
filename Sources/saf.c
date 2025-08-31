@@ -1,6 +1,7 @@
 #include <m_pd.h>
-#include <s_stuff.h>
+
 #include <m_imp.h>
+#include <s_stuff.h>
 
 static t_class *saf_libclass;
 
@@ -8,9 +9,7 @@ typedef struct _saf {
     t_object x_obj;
 } t_saf;
 
-static void *saf_new(void) {
-    return pd_new(saf_libclass);
-}
+static void *saf_new(void) { return pd_new(saf_libclass); }
 
 void saf_setup(void) {
     int major, minor, micro;
@@ -19,7 +18,7 @@ void saf_setup(void) {
         return;
     }
 
-    logpost(0, 2, "\n[saf] pd-saf by Charles K. Neimog\n");
+    logpost(0, 2, "[saf] by Charles K. Neimog | version %d.%d.%d", 0, 1, 0);
 
     saf_libclass =
         class_new(gensym("saf"), (t_newmethod)saf_new, 0, sizeof(t_saf), CLASS_NOINLET, 0);
