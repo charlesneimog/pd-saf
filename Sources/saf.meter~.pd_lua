@@ -105,6 +105,7 @@ function mcmeter:dsp(samplerate, blocksize, inchans)
 	self.inchans = inchans[1]
 	self.samplerate = samplerate
 	self.width = self.meter_width * self.inchans
+    self:update_args()
 	if self.width < 8 then
 		self.width = 8
 		self.meter_width = math.floor(8 / self.inchans + 0.5)
