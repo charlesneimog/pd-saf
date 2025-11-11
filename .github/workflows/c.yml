@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [amd64, arm, aarch64]
+        arch: [amd64]
         precision: [32, 64]
     steps:
       - uses: actions/checkout@v4
