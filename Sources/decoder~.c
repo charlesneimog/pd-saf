@@ -387,7 +387,7 @@ void decoder_tilde_dsp(t_decoder_tilde *x, t_signal **sp) {
     x->nInAccIndex = 0;
     x->nIn = x->multichannel ? sp[0]->s_nchans : x->nIn;
 
-    if (sp[0]->s_nchans != x->nIn) {
+    if (sp[0]->s_nchans != x->nIn && x->multichannel) {
         pd_error(x,
                  "Input signal has %d channels, but decoder is configured for %d channels. Update"
                  "the ambisonics order!",
@@ -474,7 +474,6 @@ void *decoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
                 pd_error(x, "[saf.decoder~] Expected '-m' in second argument.");
                 return NULL;
             }
-            // order is decided (and updated inside dsp) by the inputs channels from saf.encoder~
             order = 1;
             num_loudspeakers = (argc >= 2) ? atom_getint(argv + 1) : 4;
             x->multichannel = 1;
@@ -482,6 +481,7 @@ void *decoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
             order = (argc >= 1) ? atom_getint(argv) : 1;
             num_loudspeakers = (argc >= 2) ? atom_getint(argv + 1) : 1;
             x->multichannel = 0;
+            post("decoder mono");
         }
     }
 
