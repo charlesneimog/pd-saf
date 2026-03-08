@@ -143,7 +143,6 @@ if(NOT TARGET fftw3f)
         ON
         CACHE BOOL "Enable single precision" FORCE)
     set(FFTW3_FILE ${CMAKE_BINARY_DIR}/fftw-3.3.10.tar.gz)
-
     if(NOT EXISTS ${FFTW3_FILE})
         message(STATUS "Downloading FFTW3")
         file(
@@ -173,7 +172,6 @@ if(NOT APPLE)
     set(SAF_ENABLE_SIMD ON)
     set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
     add_definitions(-DSAF_USE_OPEN_BLAS_AND_LAPACKE)
-    set(CMAKE_EXE_LINKER_FLAGS "-static -static-libgfortran -static-libgcc")
 else()
     set(SAF_PERFORMANCE_LIB "SAF_USE_APPLE_ACCELERATE")
 endif()
@@ -183,7 +181,8 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framewo
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/framework/include/")
 
 if(NOT APPLE AND NOT EMSCRIPTEN)
-    target_link_libraries(saf PUBLIC gfortran fftw3f)
+    target_link_options(saf INTERFACE -static-libgfortran -static-libgcc -static-libstdc++)
+    target_link_libraries(saf PUBLIC fftw3f gfortran)
 endif()
 
 if(SAF_ENABLE_SIMD)
@@ -194,7 +193,7 @@ endif()
 # │              PD OBJECTS              │
 # ╰──────────────────────────────────────╯
 file(GLOB ENCODER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_enc/*.c")
-pd_add_external(saf.encoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/encoder~.c;${ENCODER_SRC}" LINK_LIBRARIES saf fftw3f)
+pd_add_external(saf.encoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/encoder~.c;${ENCODER_SRC}" LINK_LIBRARIES saf)
 
 # ─────────────────────────────────────
 file(GLOB PANNER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/panner/*.c")

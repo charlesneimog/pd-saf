@@ -19,7 +19,7 @@
 // ─────────────────────────────────────
 static void init_logcallback(t_pd *obj, void *data) {
     const char *msg = (const char *)data;
-    logpost(obj, 3, "%s", msg);
+    logpost(obj, 2, "%s", msg);
     free((void *)msg);
 }
 

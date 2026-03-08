@@ -229,6 +229,17 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
         // overall energy and reconstruction of the sound field.
         int type = atom_getint(argv);
         ambi_dec_setNormType(x->hAmbi, type);
+
+        if (type == NORM_N3D) {
+            logpost(x, 2, "[saf.decoder~] Using orthonormalised (N3D)");
+        } else if (type == NORM_SN3D) {
+            logpost(x, 2, "[saf.decoder~] Schmidt semi-normalisation (SN3D)");
+        } else if (type == NORM_FUMA) {
+            logpost(x, 2, "[saf.decoder~] (Legacy) Furse-Malham scaling");
+        } else {
+            pd_error(x, "[saf.decoder~], Invalid normalization type");
+        }
+
     } else if (strcmp(method, "decmethod") == 0) {
         // The `decmethod` method sets the Ambisonic decoding algorithm for either the low- or
         // high-frequency band, allowing selection between SAD, MMD, EPAD, or AllRAD. The decoders
