@@ -6,215 +6,94 @@ endif()
 
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(BUILD_STATIC_LIBS ON)
+set(BUILD_TESTING OFF)
 
-# ╭──────────────────────────────────────╮
-# │               pd.cmake               │
-# ╰──────────────────────────────────────╯
-cmake_policy(SET CMP0135 NEW)
+# pd.cmake
 set(PDCMAKE_FILE ${CMAKE_BINARY_DIR}/pd.cmake)
+set(PDCMAKE_VERSION "v0.2.15")
 if(NOT EXISTS ${PDCMAKE_FILE})
     message(STATUS "Downloading pd.cmake")
-    file(
-        DOWNLOAD https://raw.githubusercontent.com/pure-data/pd.cmake/refs/tags/v0.2.7/pd.cmake ${PDCMAKE_FILE}
-        SHOW_PROGRESS
-        STATUS DOWNLOAD_STATUS)
+    file(DOWNLOAD https://raw.githubusercontent.com/pure-data/pd.cmake/refs/heads/main/pd.cmake ${PDCMAKE_FILE}
+         STATUS DOWNLOAD_STATUS)
 endif()
 include(${PDCMAKE_FILE})
 
-# ╭──────────────────────────────────────╮
-# │               OpenBLAS               │
-# ╰──────────────────────────────────────╯
-set(BUILD_STATIC_LIBS ON)
-set(BUILD_WITHOUT_LAPACK OFF)
-set(BUILD_TESTING OFF)
-set(BUILD_LAPACK_DEPRECATED OFF)
-set(C_LAPACK OFF)
-set(CBLAS OFF)
+# CPM
+set(CPM_VERSION "0.42.1")
+set(CPM_FILE ${CMAKE_BINARY_DIR}/CPM.cmake)
+if(NOT EXISTS "${CPM_FILE}")
+    file(DOWNLOAD "https://github.com/cpm-cmake/CPM.cmake/releases/download/v${CPM_VERSION}/CPM.cmake" ${CPM_FILE})
+endif()
+include(${CPM_FILE})
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT EMSCRIPTEN)
-    set(OPENBLAS_FILE "${CMAKE_BINARY_DIR}/OpenBLAS.zip")
-    set(OPENBLAS_SOURCE_DIR "${CMAKE_BINARY_DIR}/OpenBLAS") # Nome fixo da pasta extraída
-    set(OPENBLAS_TEMP_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-temp") # Pasta temporária
-
-    # Baixar OpenBLAS se não existir
-    if(NOT EXISTS ${OPENBLAS_FILE})
-        message(STATUS "Downloading OpenBLAS...")
-        file(
-            DOWNLOAD https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.29/OpenBLAS-0.3.29.zip
-            ${OPENBLAS_FILE}
-            SHOW_PROGRESS
-            STATUS DOWNLOAD_STATUS)
-    endif()
-
-    # Extrair OpenBLAS se o diretório não existir
-    if(NOT EXISTS ${OPENBLAS_SOURCE_DIR})
-        message(STATUS "Extracting OpenBLAS...")
-        execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzf ${OPENBLAS_FILE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
-        # Encontrar a pasta extraída (deve ser "OpenBLAS-<commit-hash>")
-        file(GLOB EXTRACTED_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-*")
-
-        # Renomear para o nome fixo
-        if(EXTRACTED_DIR)
-            file(RENAME "${EXTRACTED_DIR}" "${OPENBLAS_SOURCE_DIR}")
-        else()
-            message(FATAL_ERROR "OpenBLAS extraction failed! Folder not found.")
-        endif()
-    endif()
-
-    set(CMAKE_C_STANDARD 17)
-    set(CMAKE_C_STANDARD_REQUIRED ON)
-    set(CMAKE_C_EXTENSIONS ON)
-
-    # Adicionar OpenBLAS ao projeto
-    add_subdirectory(${OPENBLAS_SOURCE_DIR} ${CMAKE_BINARY_DIR}/OpenBLAS EXCLUDE_FROM_ALL)
-    # Incluir diretórios necessários
-    include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/CBLAS/include/")
-    include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include/")
-    set(CBLAS_MANGLING_HEADER "${CMAKE_CURRENT_BINARY_DIR}/cblas_mangling.h")
-    file(WRITE "${CBLAS_MANGLING_HEADER}" "")
-    include_directories("${CMAKE_CURRENT_BINARY_DIR}/")
-    set(LAPACKE_LIBRARY openblas)
-    set(OPENBLAS_LIBRARY openblas)
-elseif(EMSCRIPTEN)
-    set(OPENBLAS_FILE "${CMAKE_BINARY_DIR}/OpenBLAS.zip")
-    set(OPENBLAS_SOURCE_DIR "${CMAKE_BINARY_DIR}/OpenBLAS") # Nome fixo da pasta extraída
-    set(OPENBLAS_TEMP_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-temp") # Pasta temporária
-
-    # Baixar OpenBLAS se não existir
-    if(NOT EXISTS ${OPENBLAS_FILE})
-        message(STATUS "Downloading OpenBLAS...")
-        file(
-            DOWNLOAD https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.29/OpenBLAS-0.3.29.zip
-            ${OPENBLAS_FILE}
-            SHOW_PROGRESS
-            STATUS DOWNLOAD_STATUS)
-    endif()
-
-    # Extrair OpenBLAS se o diretório não existir
-    if(NOT EXISTS ${OPENBLAS_SOURCE_DIR})
-        message(STATUS "Extracting OpenBLAS...")
-        if(WIN32)
-            execute_process(COMMAND ${CMAKE_COMMAND} -E unzip ${OPENBLAS_FILE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-        else()
-            execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzf ${OPENBLAS_FILE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-        endif()
-        file(GLOB EXTRACTED_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-*")
-        if(EXTRACTED_DIR)
-            file(RENAME "${EXTRACTED_DIR}" "${OPENBLAS_SOURCE_DIR}")
-        else()
-            message(FATAL_ERROR "OpenBLAS extraction failed! Folder not found.")
-        endif()
-    endif()
-
-    # Incluir diretórios necessários
-    include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/CBLAS/include/")
-    include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include/")
-
-    # Gerar cabeçalho de manipulação do CBLAS
-    set(CBLAS_MANGLING_HEADER "${CMAKE_CURRENT_BINARY_DIR}/cblas_mangling.h")
-    file(WRITE "${CBLAS_MANGLING_HEADER}" "")
-
-    set(LIB_OPENBLAS "${CMAKE_BINARY_DIR}/libopenblas.a")
-    if(NOT EXISTS ${LIB_OPENBLAS})
-        file(
-            DOWNLOAD https://github.com/charlesneimog/pd4web/raw/refs/heads/main/Resources/Wasm/libopenblas.a
-            ${LIB_OPENBLAS}
-            SHOW_PROGRESS
-            STATUS DOWNLOAD_STATUS)
-    endif()
-
-    set(LAPACKE_LIBRARY "${LIB_OPENBLAS}")
-    set(OPENBLAS_LIBRARY "${LIB_OPENBLAS}")
+# OpenBLAS
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    cpmaddpackage(
+        NAME
+        OpenBLAS
+        VERSION
+        0.3.33
+        URL
+        https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33.tar.gz
+        OPTIONS
+        "BUILD_SHARED_LIBS OFF")
 endif()
 
-# ╭──────────────────────────────────────╮
-# │                FFTW3                 │
-# ╰──────────────────────────────────────╯
-if(NOT TARGET fftw3f)
-    cmake_policy(SET CMP0135 NEW)
-    set(BUILD_SHARED_LIBS
-        OFF
-        CACHE BOOL "Build static libs" FORCE)
-    set(BUILD_TESTS
-        OFF
-        CACHE BOOL "Disable FFTW tests" FORCE)
-    set(ENABLE_FLOAT
-        ON
-        CACHE BOOL "Enable single precision" FORCE)
-    set(FFTW3_FILE ${CMAKE_BINARY_DIR}/fftw-3.3.10.tar.gz)
-    if(NOT EXISTS ${FFTW3_FILE})
-        message(STATUS "Downloading FFTW3")
-        file(
-            DOWNLOAD https://www.fftw.org/fftw-3.3.10.tar.gz ${FFTW3_FILE}
-            SHOW_PROGRESS
-            STATUS DOWNLOAD_STATUS)
-    endif()
-
-    file(ARCHIVE_EXTRACT INPUT ${CMAKE_BINARY_DIR}/fftw-3.3.10.tar.gz DESTINATION ${CMAKE_BINARY_DIR}/)
-
-    add_subdirectory(${CMAKE_BINARY_DIR}/fftw-3.3.10 ${CMAKE_BINARY_DIR}/fftw3f EXCLUDE_FROM_ALL)
-    set_target_properties(fftw3f PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR})
-    set_target_properties(fftw3f PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-endif()
+# FFTW3
+cpmaddpackage(
+    NAME
+    fftw3
+    URL
+    https://www.fftw.org/fftw-3.3.11.tar.gz
+    OPTIONS
+    "BUILD_SHARED_LIBS OFF"
+    "CMAKE_POSITION_INDEPENDENT_CODE ON"
+    "ENABLE_FLOAT OFF")
 
 # ╭──────────────────────────────────────╮
 # │                 SAF                  │
 # ╰──────────────────────────────────────╯
-set(SAF_BUILD_TESTS OFF)
-set(SAF_BUILD_EXAMPLES OFF)
-set(SAF_ENABLE_SOFA_READER_MODULE ON)
-set(SAF_ENABLE_TRACKER_MODULE ON)
-set(SAF_ENABLE_HADES_MODULE ON)
-
-if(NOT APPLE)
-    if (NOT EMSCRIPTEN)
-    	set(SAF_ENABLE_SIMD ON)
-    endif()
-    set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
-    add_definitions(-DSAF_USE_OPEN_BLAS_AND_LAPACKE)
-else()
-    set(SAF_PERFORMANCE_LIB "SAF_USE_APPLE_ACCELERATE")
-endif()
-
-add_subdirectory(Libraries/Spatial_Audio_Framework ${CMAKE_BINARY_DIR}/Spatial_Audio_Framework EXCLUDE_FROM_ALL)
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/include")
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/framework/include/")
-
+set(LAPACKE_LIBRARY "LAPACKE")
+set(OPENBLAS_LIBRARY "openblas")
+set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
+cpmaddpackage("gh:leomccormack/Spatial_Audio_Framework@1.3.4")
+target_include_directories(
+    saf
+    PUBLIC ${OpenBLAS_BINARY_DIR} # Provides the safe, generated cblas.h and openblas_config.h
+           ${CMAKE_CURRENT_BINARY_DIR}/generated
+           ${CMAKE_CURRENT_BINARY_DIR}/
+           ${OpenBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include # Provides static lapacke.h
+           ${OpenBLAS_BINARY_DIR}/lapack-netlib/LAPACKE/include # Provides generated lapacke_mangling.h
+)
+target_include_directories(saf PUBLIC "${saf_SOURCE_DIR}/../examples/include/")
 if(NOT APPLE AND NOT EMSCRIPTEN)
     target_link_options(saf INTERFACE -static-libgfortran -static-libgcc -static-libstdc++)
-    target_link_libraries(saf PUBLIC fftw3f gfortran)
-endif()
-
-if(SAF_ENABLE_SIMD)
-    target_compile_options(saf PUBLIC -msse -msse2 -msse3)
+    target_link_libraries(saf PUBLIC fftw3 gfortran)
 endif()
 
 # ╭──────────────────────────────────────╮
 # │              PD OBJECTS              │
 # ╰──────────────────────────────────────╯
-file(GLOB ENCODER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_enc/*.c")
+file(GLOB ENCODER_SRC "${saf_SOURCE_DIR}/../examples/src/ambi_enc/*.c")
 pd_add_external(saf.encoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/encoder~.c;${ENCODER_SRC}" LINK_LIBRARIES saf)
 
 # ─────────────────────────────────────
-file(GLOB PANNER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/panner/*.c")
+file(GLOB PANNER_SRC "${saf_SOURCE_DIR}/../examples/src/panner/*.c")
 pd_add_external(saf.panner~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/panner~.c;${PANNER_SRC}" LINK_LIBRARIES saf)
 
 # ─────────────────────────────────────
-file(GLOB ROOMSIM_TILDE_SOURCE
-     "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_roomsim/*.c")
+file(GLOB ROOMSIM_TILDE_SOURCE "${saf_SOURCE_DIR}/../examples/src/ambi_roomsim/*.c")
 
 pd_add_external(saf.roomsim~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/roomsim~.c;${ROOMSIM_TILDE_SOURCE}" LINK_LIBRARIES
                 saf)
 
 # ──────────────────────────────────────
-file(GLOB DECODER_SRC "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_dec/*.c")
+file(GLOB DECODER_SRC "${saf_SOURCE_DIR}/../examples/src/ambi_dec/*.c")
 pd_add_external(saf.decoder~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/decoder~.c;${DECODER_SRC}" LINK_LIBRARIES saf)
 
 # # ─────────────────────────────────────
-file(GLOB BINAURAL_TILDE_SOURCE
-     "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/ambi_bin/*.c")
+file(GLOB BINAURAL_TILDE_SOURCE "${saf_SOURCE_DIR}/../examples/src/ambi_bin/*.c")
 
 pd_add_external(saf.binaural~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binaural~.c;${BINAURAL_TILDE_SOURCE}" LINK_LIBRARIES
                 saf)
@@ -230,10 +109,10 @@ pd_add_external(saf.binaural~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binaural~.c;$
 # file(GLOB BINAURALIZER_SOURCE
 # "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/binauraliser/*.c")
 #
-# pd_add_external(saf.binauraliser~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binauraliser~.c;${BINAURALIZER_SOURCE}"
-# LINK_LIBRARIES saf)
+pd_add_external(saf.binauraliser~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binauraliser~.c;${BINAURALIZER_SOURCE}"
+                LINK_LIBRARIES saf)
 
-file(GLOB SLDOA_TILDE_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/sldoa/*.c")
+file(GLOB SLDOA_TILDE_SOURCE "${saf_SOURCE_DIR}/examples/src/sldoa/*.c")
 pd_add_external(saf.sldoa~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/sldoa~.c;${SLDOA_TILDE_SOURCE}" LINK_LIBRARIES saf)
 
 # ╭──────────────────────────────────────╮
