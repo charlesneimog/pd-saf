@@ -28,7 +28,7 @@ endif()
 include(${CPM_FILE})
 
 # OpenBLAS
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT EMSCRIPTEN)
     cpmaddpackage(
         NAME
         OpenBLAS
@@ -38,6 +38,56 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33.tar.gz
         OPTIONS
         "BUILD_SHARED_LIBS OFF")
+elseif(EMSCRIPTEN)
+    set(OPENBLAS_FILE "${CMAKE_BINARY_DIR}/OpenBLAS.zip")
+    set(OPENBLAS_SOURCE_DIR "${CMAKE_BINARY_DIR}/OpenBLAS") # Nome fixo da pasta extraída
+    set(OPENBLAS_TEMP_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-temp") # Pasta temporária
+
+    # Baixar OpenBLAS se não existir
+    if(NOT EXISTS ${OPENBLAS_FILE})
+        message(STATUS "Downloading OpenBLAS...")
+        file(
+            DOWNLOAD https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.29/OpenBLAS-0.3.29.zip
+            ${OPENBLAS_FILE}
+            SHOW_PROGRESS
+            STATUS DOWNLOAD_STATUS)
+    endif()
+
+    # Extrair OpenBLAS se o diretório não existir
+    if(NOT EXISTS ${OPENBLAS_SOURCE_DIR})
+        message(STATUS "Extracting OpenBLAS...")
+        if(WIN32)
+            execute_process(COMMAND ${CMAKE_COMMAND} -E unzip ${OPENBLAS_FILE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        else()
+            execute_process(COMMAND ${CMAKE_COMMAND} -E tar xzf ${OPENBLAS_FILE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        endif()
+        file(GLOB EXTRACTED_DIR "${CMAKE_BINARY_DIR}/OpenBLAS-*")
+        if(EXTRACTED_DIR)
+            file(RENAME "${EXTRACTED_DIR}" "${OPENBLAS_SOURCE_DIR}")
+        else()
+            message(FATAL_ERROR "OpenBLAS extraction failed! Folder not found.")
+        endif()
+    endif()
+
+    # Incluir diretórios necessários
+    include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/CBLAS/include/")
+    include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include/")
+
+    # Gerar cabeçalho de manipulação do CBLAS
+    set(CBLAS_MANGLING_HEADER "${CMAKE_CURRENT_BINARY_DIR}/cblas_mangling.h")
+    file(WRITE "${CBLAS_MANGLING_HEADER}" "")
+
+    set(LIB_OPENBLAS "${CMAKE_BINARY_DIR}/libopenblas.a")
+    if(NOT EXISTS ${LIB_OPENBLAS})
+        file(
+            DOWNLOAD https://github.com/charlesneimog/pd4web/raw/refs/heads/main/Resources/Wasm/libopenblas.a
+            ${LIB_OPENBLAS}
+            SHOW_PROGRESS
+            STATUS DOWNLOAD_STATUS)
+    endif()
+
+    set(LAPACKE_LIBRARY "${LIB_OPENBLAS}")
+    set(OPENBLAS_LIBRARY "${LIB_OPENBLAS}")
 endif()
 
 # FFTW3
@@ -61,14 +111,14 @@ cpmaddpackage("gh:leomccormack/Spatial_Audio_Framework@1.3.4")
 target_include_directories(
     saf
     PUBLIC ${OpenBLAS_BINARY_DIR} # Provides the safe, generated cblas.h and openblas_config.h
-           ${CMAKE_CURRENT_BINARY_DIR}/generated
-           ${CMAKE_CURRENT_BINARY_DIR}/
+           ${CMAKE_BINARY_DIR}/generated
+           ${CMAKE_BINARY_DIR}/
            ${OpenBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include # Provides static lapacke.h
            ${OpenBLAS_BINARY_DIR}/lapack-netlib/LAPACKE/include # Provides generated lapacke_mangling.h
 )
 target_include_directories(saf PUBLIC "${saf_SOURCE_DIR}/../examples/include/")
 if(NOT APPLE AND NOT EMSCRIPTEN)
-    target_link_options(saf INTERFACE -static-libgfortran -static-libgcc -static-libstdc++)
+    target_link_options(saf INTERFACE -static-libgcc -static-libstdc++)
     target_link_libraries(saf PUBLIC fftw3 gfortran)
 endif()
 
@@ -99,16 +149,17 @@ pd_add_external(saf.binaural~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binaural~.c;$
                 saf)
 
 # ─────────────────────────────────────
-# file(GLOB PITCHSHIFTER_TILDE_SOURCE
-# "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/pitch_shifter/*.c")
-#
-# pd_add_external(saf.pitchshifter~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/pitchshifter~.c;${PITCHSHIFTER_TILDE_SOURCE}"
-# LINK_LIBRARIES saf)
+file(GLOB PITCHSHIFTER_TILDE_SOURCE "${saf_SOURCE_DIR}/examples/src/pitch_shifter/*.c")
+pd_add_external(saf.pitchshifter~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/pitchshifter~.c;${PITCHSHIFTER_TILDE_SOURCE}"
+                LINK_LIBRARIES saf)
 
 # ─────────────────────────────────────
-# file(GLOB BINAURALIZER_SOURCE
-# "${CMAKE_CURRENT_SOURCE_DIR}/Libraries/Spatial_Audio_Framework/examples/src/binauraliser/*.c")
-#
+file(GLOB CONVOLVER_TILDE_SOURCE "${saf_SOURCE_DIR}/../examples/src/multiconv/*.c")
+pd_add_external(saf.multiconvolve~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/multiconvolve~.c;${CONVOLVER_TILDE_SOURCE}"
+                LINK_LIBRARIES saf)
+
+# ─────────────────────────────────────
+file(GLOB BINAURALIZER_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/${saf_SOURCE_DIR}/examples/src/binauraliser/*.c")
 pd_add_external(saf.binauraliser~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binauraliser~.c;${BINAURALIZER_SOURCE}"
                 LINK_LIBRARIES saf)
 
