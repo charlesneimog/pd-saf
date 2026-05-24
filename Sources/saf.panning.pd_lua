@@ -13,7 +13,23 @@ function panning:initialize(_, args)
 	self.yzview = false
 	self.nspeakers = 0
 
-	-- Define colors with appropriate RGB values
+	pd.post("new saf")
+
+	-- SAF / VST convention:
+	-- +X = front
+	-- +Y = left
+	-- +Z = up
+	--
+	-- azimuth:
+	--   0°   = front
+	--   +90° = left
+	--   -90° = right
+	--   ±180 = back
+	--
+	-- elevation:
+	--   +90° = up
+	--   -90° = down
+
 	self.colors = {
 		background1 = { 19, 47, 80 },
 		background2 = { 27, 55, 87 },
@@ -31,25 +47,20 @@ function panning:initialize(_, args)
 		elseif arg == "-nsources" then
 			self.sources_size = type(args[i + 1]) == "number" and args[i + 1] or 5
 		elseif arg == "-yzview" then
-			local xzview = type(args[i + 1]) == "number" and args[i + 1] or 0
-			if xzview == 1 then
-				self.yzview = true
-			end
+			local yz = type(args[i + 1]) == "number" and args[i + 1] or 0
+			self.yzview = (yz == 1)
 		elseif arg == "-nspeakers" then
 			self.nspeakers = args[i + 1]
 		end
 	end
 
-	self.speakers_pos = {}
-	-- for i = 0, self.nspeakers - 1 do
-	-- 	local azi = 360 / self.nspeakers * i
-	-- 	self.speakers_pos[i + 1] = {}
-	-- 	self.speakers_pos[i + 1].azi = azi
-	-- 	self.speakers_pos[i + 1].ele = 0
-	-- 	self.speakers_pos[i + 1].dis = 1.0
-	-- end
+	if self.yzview then
+		self.fig_size = self.plan_size * 2
+	end
 
+	self.speakers_pos = {}
 	self.sources = {}
+
 	self:set_size(self.fig_size, self.plan_size)
 
 	for i = 1, self.sources_size do
@@ -64,135 +75,170 @@ function panning:get_max_radius()
 	return (self.plan_size / 2) - self.margin
 end
 
+-- ─────────────────────────────────────
+-- SAF spherical coordinates:
+--
+-- x = front/back
+-- y = left/right
+-- z = up/down
+--
+-- screen:
+-- right  = +screenX
+-- down   = +screenY
+--
+-- therefore:
+-- screenX = -y
+-- screenY = -x
+--
+function panning:spherical_to_cartesian(azi_deg, ele_deg, radius)
+	local center = self.plan_size / 2
+
+	local azi = math.rad(azi_deg)
+	local ele = math.rad(ele_deg)
+
+	local x3d = math.cos(ele) * math.cos(azi) * radius
+	local y3d = math.cos(ele) * math.sin(azi) * radius
+	local z3d = math.sin(ele) * radius
+
+	local screen_x = center - y3d
+	local screen_y = center - x3d
+	local screen_z = center - z3d
+
+	return screen_x, screen_y, screen_z
+end
+
+-- ─────────────────────────────────────
+function panning:cartesian_to_spherical(screen_x, screen_y)
+	local center = self.plan_size / 2
+	local max_radius = self:get_max_radius()
+
+	-- inverse screen mapping
+	local y3d = -(screen_x - center)
+	local x3d = -(screen_y - center)
+
+	local radius = math.sqrt(x3d * x3d + y3d * y3d)
+
+	if radius > max_radius and radius > 0 then
+		local scale = max_radius / radius
+		x3d = x3d * scale
+		y3d = y3d * scale
+		radius = max_radius
+	end
+
+	local azi = math.atan(y3d, x3d)
+
+	local azi_deg = math.deg(azi)
+
+	return azi_deg, 0, radius
+end
+
+-- ─────────────────────────────────────
 function panning:get_yz_center()
 	local ellipse_x = self.plan_size + self.margin
-	local ellipse_width = self.plan_size - 2 * self.margin
+	local ellipse_width = self.plan_size - (2 * self.margin)
+
 	local center_x = ellipse_x + (ellipse_width / 2)
 	local center_y = self.margin + (ellipse_width / 2)
+
 	return center_x, center_y, ellipse_width / 2
 end
 
+-- ─────────────────────────────────────
+-- YZ view:
+--
+-- horizontal = Y axis
+-- vertical   = Z axis
+--
+-- SAF:
+-- +Y = left
+-- +Z = up
+--
+-- screen:
+-- +X = right
+-- +Y = down
+--
+-- therefore:
+-- screenX = -Y
+-- screenY = -Z
+--
 function panning:spherical_to_yz_screen(azi_deg, ele_deg, radius)
 	local center_x, center_y, base_radius = self:get_yz_center()
+
 	radius = math.min(radius or base_radius, base_radius)
-	local azi_rad = math.rad(azi_deg)
-	local ele_rad = math.rad(ele_deg)
 
-	local depth = math.cos(ele_rad) * math.cos(azi_rad) * radius
-	local height = math.sin(ele_rad) * radius
+	local azi = math.rad(azi_deg)
+	local ele = math.rad(ele_deg)
 
-	local x = center_x - depth
-	local y = center_y - height
+	local y3d = math.cos(ele) * math.sin(azi) * radius
+	local z3d = math.sin(ele) * radius
+
+	local x = center_x - y3d
+	local y = center_y - z3d
 
 	return x, y
 end
 
+-- ─────────────────────────────────────
 function panning:create_newsource(i)
-	local center_x, center_y = self:get_size() / 2, self:get_size() / 2
-	local margin = self.margin
 	local max_radius = self:get_max_radius()
+
 	local angle_step = (math.pi * 2) / self.sources_size
 	local angle = (i - 1) * angle_step
-	local distance = max_radius * 0.9
 
-	-- Start with positions at 0,0 elevation
 	local azi_deg = math.deg(angle)
 	local ele_deg = 0
 
-	-- Convert to Cartesian coordinates using VST coordinate system
-	local x, y, z = self:spherical_to_cartesian(azi_deg, ele_deg, distance)
+	local radius = max_radius * 0.9
+
+	local x, y, z = self:spherical_to_cartesian(azi_deg, ele_deg, radius)
 
 	return {
 		i = i,
+
 		x = x,
 		y = y,
 		z = z,
+
 		azi = azi_deg,
 		ele = ele_deg,
+
 		size = 8,
+
 		color = self.colors.sources,
+
 		fill = false,
 		selected = false,
-		radius = distance,
-		dis = distance / max_radius,
+
+		radius = radius,
+		dis = radius / max_radius,
 	}
 end
 
 -- ─────────────────────────────────────
--- Convert spherical (azi, ele) to Cartesian coordinates using VST coordinate system
--- azi: 0° = front, increasing counterclockwise (90° = left, -90° = right, ±180° = back)
--- ele: 0° = horizontal, +90° = top, -90° = bottom
-function panning:spherical_to_cartesian(azi_deg, ele_deg, radius)
-	local center = self.plan_size / 2
-	local azi_rad = math.rad(azi_deg)
-	local ele_rad = math.rad(ele_deg)
-
-	-- VST coordinate system: flip X so +90° appears on left, -90° on right
-	local x = -math.cos(ele_rad) * math.sin(azi_rad) * radius
-	local y = -math.cos(ele_rad) * math.cos(azi_rad) * radius -- Y is depth (front/back)
-	local z = math.sin(ele_rad) * radius -- Z is height
-
-	-- Convert to screen coordinates
-	x = x + center
-	y = y + center
-	z = z + center
-
-	return x, y, z
-end
-
--- ─────────────────────────────────────
--- Convert Cartesian coordinates to spherical using VST coordinate system
-function panning:cartesian_to_spherical(x, y)
-	local center = self.plan_size / 2
-	local max_radius = center - self.margin
-
-	-- Convert to centered coordinates
-	local dx = x - center
-	local dy = y - center
-
-	-- Apply VST coordinate system: flip X axis
-	dx = -dx
-
-	-- Calculate azimuth and elevation
-	local r = math.sqrt(dx * dx + dy * dy)
-	local azi_rad = math.atan(dx, -dy) -- atan2(x, -y) for VST coordinate system
-	local ele_rad = 0 -- Flat for XY view
-
-	local azi_deg = math.deg(azi_rad)
-	local ele_deg = math.deg(ele_rad)
-
-	-- Normalize azimuth to -180° to 180°
-	if azi_deg > 180 then
-		azi_deg = azi_deg - 360
-	end
-	if azi_deg < -180 then
-		azi_deg = azi_deg + 360
-	end
-
-	local radius = math.min(r, max_radius)
-
-	return azi_deg, ele_deg, radius
-end
-
--- ──────────────────────────────────────────
 function panning:update_args()
 	local args = {}
+
 	table.insert(args, "-size")
 	table.insert(args, self.plan_size)
+
 	table.insert(args, "-nsources")
 	table.insert(args, self.sources_size)
+
 	if self.yzview then
 		table.insert(args, "-yzview")
 		table.insert(args, 1)
 	end
+
 	table.insert(args, "-nspeakers")
 	table.insert(args, self.nspeakers)
+
 	self:set_args(args)
 end
 
 --╭─────────────────────────────────────╮
 --│ METHODS │
 --╰─────────────────────────────────────╯
+
 function panning:in_1_reload()
 	self:dofilex(self._scriptname)
 	self:initialize("", {})
@@ -202,6 +248,7 @@ end
 -- ─────────────────────────────────────
 function panning:in_1_yzview(args)
 	local enable = args[1] == 1
+
 	self.yzview = enable
 
 	if enable then
@@ -219,28 +266,38 @@ end
 -- ─────────────────────────────────────
 function panning:in_1_numspeakers(args)
 	local n = args[1]
+
 	self.nspeakers = n
 	self.speakers_pos = {}
+
 	for i = 0, self.nspeakers - 1 do
-		local azi = 360 / self.nspeakers * i
-		self.speakers_pos[i + 1] = {}
-		self.speakers_pos[i + 1].azi = azi
-		self.speakers_pos[i + 1].ele = 0
-		self.speakers_pos[i + 1].dis = 1.0
+		local azi = (360 / self.nspeakers) * i
+
+		self.speakers_pos[i + 1] = {
+			azi = azi,
+			ele = 0,
+			dis = 1.0,
+		}
+
 		self:outlet(2, "speaker", { i + 1, azi, 0 })
 	end
+
 	self:repaint()
 	self:update_args()
 end
 
+-- ─────────────────────────────────────
 function panning:in_1_speaker(args)
 	local n = args[1]
-	self.nspeakers = n
+
 	self.speakers_pos[n] = self.speakers_pos[n] or {}
+
 	self.speakers_pos[n].azi = args[2]
 	self.speakers_pos[n].ele = args[3]
-	self.speakers_pos[n].dis = args[4] or self.speakers_pos[n].dis or 1.0
+	self.speakers_pos[n].dis = args[4] or 1.0
+
 	self:outlet(2, "speaker", { n, args[2], args[3] })
+
 	self:repaint()
 	self:update_args()
 end
@@ -248,35 +305,40 @@ end
 -- ─────────────────────────────────────
 function panning:in_1_source(args)
 	local index = args[1]
+
 	local azi_deg = args[2]
 	local ele_deg = args[3]
-	local dis = 0.8
-	if #args >= 4 then
-		dis = args[4]
-	end
+
+	local dis = args[4] or 0.8
 
 	if index > self.sources_size then
 		self.sources_size = index
 		self:in_1_sources({ index })
 	end
 
-	self:outlet(1, "source", { index, azi_deg, ele_deg })
+	self:outlet(1, "source", {
+		index,
+		azi_deg,
+		ele_deg,
+	})
 
-	-- Convert to Cartesian coordinates using VST system
 	local max_radius = self:get_max_radius()
-	local x, y, z = self:spherical_to_cartesian(azi_deg, ele_deg, max_radius * dis)
 
-	for _, source in pairs(self.sources) do
-		if source.i == index then
-			source.x = x
-			source.y = y
-			source.z = z
-			source.azi = azi_deg
-			source.ele = ele_deg
-			source.radius = max_radius * dis
-			source.dis = dis
-		end
-	end
+	local radius = max_radius * dis
+
+	local x, y, z = self:spherical_to_cartesian(azi_deg, ele_deg, radius)
+
+	local source = self.sources[index]
+
+	source.x = x
+	source.y = y
+	source.z = z
+
+	source.azi = azi_deg
+	source.ele = ele_deg
+
+	source.radius = radius
+	source.dis = dis
 
 	self:update_args()
 	self:repaint(2)
@@ -285,26 +347,23 @@ end
 -- ─────────────────────────────────────
 function panning:in_1_size(args)
 	local old_size = self.plan_size
-	local old_max_radius = (old_size / 2) - self.margin
-	local new_size = args[1]
-	self.plan_size = new_size
+	local relation = args[1] / old_size
 
-	local width = self.yzview and (new_size * 2) or new_size
+	self.plan_size = args[1]
+
+	local width = self.yzview and (self.plan_size * 2) or self.plan_size
+
 	self.fig_size = width
-	self:set_size(width, new_size)
 
-	local relation = new_size / old_size
+	self:set_size(width, self.plan_size)
+
 	local new_max_radius = self:get_max_radius()
 
 	for _, source in pairs(self.sources) do
-		local radius = source.radius or (old_max_radius * (source.dis or 1.0))
-		radius = radius * relation
-		source.radius = radius
-		source.dis = radius / new_max_radius
-		local sx, sy, sz = self:spherical_to_cartesian(source.azi, source.ele, radius)
-		source.x = sx
-		source.y = sy
-		source.z = sz
+		source.radius = source.radius * relation
+		source.dis = source.radius / new_max_radius
+
+		source.x, source.y, source.z = self:spherical_to_cartesian(source.azi, source.ele, source.radius)
 	end
 
 	self:update_args()
@@ -313,60 +372,40 @@ end
 
 -- ─────────────────────────────────────
 function panning:in_1_sources(args)
-	local num_circles = args[1]
-	self.sources_size = args[1]
+	local num = args[1]
+
+	self.sources_size = num
 	self.sources = {}
 
-	for i = 1, num_circles do
+	for i = 1, num do
 		self.sources[i] = self:create_newsource(i)
 	end
 
+	self:outlet(1, "num_sources", { num })
+
 	self:repaint(2)
-	self:outlet(1, "num_sources", { args[1] })
 end
 
 --╭─────────────────────────────────────╮
 --│ MOUSE │
 --╰─────────────────────────────────────╯
-function panning:mouse_drag(x, y)
-	local size_x, size_y = self:get_size()
 
-	-- Ignore drags outside the margin
-	if x < 5 or x > (size_x - 5) or y < 5 or y > (size_y - 5) then
-		return
-	end
-
-	local center = self.plan_size / 2
-	local max_radius = self:get_max_radius()
+function panning:mouse_down(x, y)
+	local selected = false
 
 	for i, source in pairs(self.sources) do
-		if source.selected then
-			local dx = x - center
-			local dy = y - center
-			local distance = math.sqrt(dx * dx + dy * dy)
-			if distance > max_radius and distance > 0 then
-				local scale = max_radius / distance
-				dx = dx * scale
-				dy = dy * scale
-			end
+		local dx = x - source.x
+		local dy = y - source.y
 
-			local clamped_x = center + dx
-			local clamped_y = center + dy
+		local r = source.size / 2
 
-			local azi_deg, ele_deg, radius = self:cartesian_to_spherical(clamped_x, clamped_y)
-			local sx, sy, sz = self:spherical_to_cartesian(azi_deg, ele_deg, radius)
-
-			source.x = sx
-			source.y = sy
-			source.z = sz
+		if (dx * dx + dy * dy) <= (r * r) then
+			source.selected = not selected
 			source.fill = true
-			source.azi = azi_deg
-			source.ele = ele_deg
-			source.radius = radius
-			source.dis = radius / max_radius
 
-			self:outlet(1, "source", { i, azi_deg, ele_deg })
+			selected = true
 		else
+			source.selected = false
 			source.fill = false
 		end
 	end
@@ -376,30 +415,31 @@ function panning:mouse_drag(x, y)
 end
 
 -- ─────────────────────────────────────
-function panning:mouse_down(x, y)
-	local already_selected = false
+function panning:mouse_drag(x, y)
+	local max_radius = self:get_max_radius()
 
 	for i, source in pairs(self.sources) do
-		local cx = source.x
-		local cy = source.y
-		local radius = source.size / 2
-		local dx = x - cx
-		local dy = y - cy
+		if source.selected then
+			local azi_deg, ele_deg, radius = self:cartesian_to_spherical(x, y)
 
-		if (dx * dx + dy * dy) <= (radius * radius) then
-			self.sources[i].x = x
-			self.sources[i].y = y
-			self.sources[i].fill = true
+			local sx, sy, sz = self:spherical_to_cartesian(azi_deg, ele_deg, radius)
 
-			if not already_selected then
-				self.sources[i].selected = true
-				already_selected = true
-			else
-				self.sources[i].selected = false
-			end
-		else
-			self.sources[i].fill = false
-			self.sources[i].selected = false
+			source.x = sx
+			source.y = sy
+			source.z = sz
+
+			source.azi = azi_deg
+			source.ele = ele_deg
+
+			source.radius = radius
+			source.dis = radius / max_radius
+
+			self:outlet(1, "source", {
+				i,
+				azi_deg,
+				ele_deg,
+				source.dis,
+			})
 		end
 	end
 
@@ -409,10 +449,11 @@ end
 
 -- ─────────────────────────────────────
 function panning:mouse_up(_, _)
-	for i, _ in pairs(self.sources) do
-		self.sources[i].fill = false
-		self.sources[i].selected = false
+	for _, source in pairs(self.sources) do
+		source.selected = false
+		source.fill = false
 	end
+
 	self:repaint(2)
 	self:repaint(3)
 end
@@ -420,173 +461,98 @@ end
 --╭─────────────────────────────────────╮
 --│ PAINT │
 --╰─────────────────────────────────────╯
-function panning:paint(g)
-	local size_x, size_y = self.plan_size, self.plan_size
-	if not self.colors then
-		return
-	end
 
-	-- Use colors from self.colors
+function panning:paint(g)
+	local size = self.plan_size
+	local center = size / 2
+	local radius = self:get_max_radius()
+
 	g:set_color(table.unpack(self.colors.background1))
 	g:fill_all()
+
 	g:set_color(table.unpack(self.colors.background2))
-	g:fill_ellipse(self.margin, self.margin, size_x - 2 * self.margin, size_y - 2 * self.margin)
+	g:fill_ellipse(self.margin, self.margin, size - (2 * self.margin), size - (2 * self.margin))
 
-	-- Lines
 	g:set_color(table.unpack(self.colors.lines))
-	local center = size_x / 2
 
-	-- Adjusted vertical and horizontal lines
-	g:draw_line(center, self.margin, center, size_y - self.margin, 1)
-	g:draw_line(self.margin, center, size_x - self.margin, center, 1)
+	g:draw_line(center, self.margin, center, size - self.margin, 1)
 
-	-- Lines from center to border (radial lines)
-	local base_radius = (math.min(size_x, size_y) / 2) - self.margin
+	g:draw_line(self.margin, center, size - self.margin, center, 1)
+
 	for angle = 0, 2 * math.pi, math.pi / 8 do
-		local x_end = center + math.cos(angle) * base_radius
-		local y_end = center + math.sin(angle) * base_radius
-		g:draw_line(center, center, x_end, y_end, 1)
+		local x = center + math.cos(angle) * radius
+		local y = center + math.sin(angle) * radius
+
+		g:draw_line(center, center, x, y, 1)
 	end
 
-	-- Ellipse 1
-	local base_size = (math.min(size_x, size_y) / 2) - self.margin
-	for i = 0, 3 do
-		local scale = math.log(i + 1) / math.log(6)
-		local radius_x = base_size * (1 - scale)
-		local radius_y = base_size * (1 - scale)
-		g:stroke_ellipse(center - radius_x, center - radius_y, radius_x * 2, radius_y * 2, 1)
+	for i = 1, 4 do
+		local r = radius * (i / 4)
+
+		g:stroke_ellipse(center - r, center - r, r * 2, r * 2, 1)
 	end
 
-	-- Draw speakers
+	-- speakers
 	for i = 1, self.nspeakers do
-        if s == nil then
-            break
-        end
 		local s = self.speakers_pos[i]
-		local azi_deg = s.azi
-		local ele_deg = s.ele
-		local dis = s.dis or 1.0
 
-		-- Convert to Cartesian using VST coordinate system
-		local x, y, z = self:spherical_to_cartesian(azi_deg, ele_deg, (self.plan_size / 2) - self.margin)
+		if s then
+			local x, y = self:spherical_to_cartesian(s.azi, s.ele, radius)
 
-		-- Draw the speaker
-		local speaker_size = 6
-		g:set_color(table.unpack(self.colors.speakers))
-		g:fill_ellipse(x - speaker_size / 2, y - speaker_size / 2, speaker_size, speaker_size)
+			g:set_color(table.unpack(self.colors.speakers))
 
-		-- Calculate text offset to appear "inside the circle"
-		local offset = 4
-		local text_x_offset = (x < self.plan_size / 2) and offset or -offset - 6
-		local text_y_offset = (y < self.plan_size / 2) and offset or -offset - 6
-		g:set_color(255, 255, 255)
-		g:draw_text(tostring(i), x + text_x_offset, y + text_y_offset, 10, 3)
+			g:fill_ellipse(x - 3, y - 3, 6, 6)
+
+			g:set_color(255, 255, 255)
+
+			g:draw_text(tostring(i), x + 4, y + 4, 12, 3)
+		end
 	end
 
-	-- Text
-	local text_x, text_y = 1, 1
 	g:set_color(table.unpack(self.colors.text))
-	g:draw_text("xy view", text_x, text_y, 50, 1)
+	g:draw_text("xy view", 2, 2, 50, 1)
 
-	--╭─────────────────────────────────────╮
-	--│ WORLD TWO │
-	--╰─────────────────────────────────────╯
+	-- YZ view
 	if self.yzview then
 		g:set_color(table.unpack(self.colors.background2))
-		g:fill_ellipse(self.plan_size + self.margin, self.margin, size_x - 2 * self.margin, size_y - 2 * self.margin)
+
+		g:fill_ellipse(self.plan_size + self.margin, self.margin, size - (2 * self.margin), size - (2 * self.margin))
 
 		g:set_color(table.unpack(self.colors.lines))
-		local ellipse_x = self.plan_size + self.margin
-		local ellipse_y = self.margin
-		local ellipse_width = size_x - 2 * self.margin
-		local ellipse_height = size_y - 2 * self.margin
-		local center_x = ellipse_x + ellipse_width / 2
-		local center_y = ellipse_y + ellipse_height / 2
-		local radius = ellipse_width / 2
 
-		-- Draw YZ grid lines
-		local vertical_lines = 8
-		for i = 1, vertical_lines do
-			local y_line = center_y - radius + (i * (2 * radius / vertical_lines))
-			local x_offset = math.sqrt(radius ^ 2 - (y_line - center_y) ^ 2)
-			g:draw_line(center_x - x_offset, y_line, center_x + x_offset, y_line, 1)
-		end
-
-		-- Draw concentric circles
-		for i = 3, 7 do
-			local circle_width = math.log(i) * (self.plan_size - self.margin)
-			g:stroke_ellipse(
-				self.plan_size + self.margin + (circle_width / 2),
-				self.margin,
-				(size_x - 2 * self.margin) - circle_width,
-				size_y - 2 * self.margin,
-				1
-			)
-		end
-
-		-- Text
-		text_x, text_y = 2 + self.plan_size, 1
-		g:set_color(table.unpack(self.colors.text))
-		g:draw_text("yz view", text_x, text_y, 50, 1)
 		g:draw_line(self.plan_size, 0, self.plan_size, self.plan_size, 1)
 
-		-- Draw speakers in YZ view
-		for i = 1, self.nspeakers do
-			local s = self.speakers_pos[i]
-			local azi_deg = s.azi
-			local ele_deg = s.ele
-			local dis = s.dis or 1.0
-
-			local radius = self:get_max_radius() * dis
-			local x_pos, z_pos = self:spherical_to_yz_screen(azi_deg, ele_deg, radius)
-
-			local speaker_size = 6
-			g:set_color(table.unpack(self.colors.speakers))
-			g:fill_ellipse(x_pos - speaker_size / 2, z_pos - speaker_size / 2, speaker_size, speaker_size)
-
-			-- Text label
-			local offset = 4
-			local text_x_offset = (x_pos < center_x) and offset or -offset - 6
-			local text_y_offset = (z_pos < center_y) and offset or -offset - 6
-			g:set_color(255, 255, 255)
-			g:draw_text(tostring(i), x_pos + text_x_offset, z_pos + text_y_offset, 10, 3)
-		end
+		g:set_color(table.unpack(self.colors.text))
+		g:draw_text("yz view", self.plan_size + 2, 2, 50, 1)
 	end
 end
 
 -- ─────────────────────────────────────
 function panning:paint_layer_2(g)
 	for i, source in pairs(self.sources) do
-		if not self.sources[i].selected then
+		if not source.selected then
 			local x = source.x
 			local y = source.y
-			local z = source.z
 			local size = source.size
 
-			-- Draw source in XY view
 			g:set_color(table.unpack(source.color))
+
 			g:stroke_ellipse(x - (size / 2), y - (size / 2), size, size, 1)
 
-			local scale_factor = 0.7
-			g:scale(scale_factor, scale_factor)
-			local text_x, text_y = x - (size / 3), y - (size / 3)
 			g:set_color(table.unpack(self.colors.source_text))
-			g:draw_text(tostring(i), (text_x + 1) / scale_factor, (text_y - 1) / scale_factor, 20, 3)
-			g:reset_transform()
 
-			-- Draw source in YZ view
+			g:draw_text(tostring(i), x + 4, y - 4, 12, 3)
+
 			if self.yzview then
+				local yz_x, yz_y = self:spherical_to_yz_screen(source.azi, source.ele, source.radius)
+
 				g:set_color(table.unpack(source.color))
-				local radius = source.radius or (self:get_max_radius() * (source.dis or 1.0))
-				local yz_x, yz_y = self:spherical_to_yz_screen(source.azi, source.ele, radius)
+
 				g:stroke_ellipse(yz_x - (size / 2), yz_y - (size / 2), size, size, 1)
 
-				g:scale(scale_factor, scale_factor)
-				text_x = yz_x - (size / 3)
-				text_y = yz_y - (size / 3)
 				g:set_color(table.unpack(self.colors.source_text))
-				g:draw_text(tostring(i), (text_x + 1) / scale_factor, (text_y - 1) / scale_factor, 20, 3)
-				g:reset_transform()
+
+				g:draw_text(tostring(i), yz_x + 4, yz_y - 4, 12, 3)
 			end
 		end
 	end
@@ -595,50 +561,29 @@ end
 -- ─────────────────────────────────────
 function panning:paint_layer_3(g)
 	for i, source in pairs(self.sources) do
-		if self.sources[i].selected then
-			local x = source.x - (source.size / 2)
-			local y = source.y - (source.size / 2)
+		if source.selected then
 			local size = source.size
 
-			-- Draw selected source in XY view
+			local x = source.x - (size / 2)
+			local y = source.y - (size / 2)
+
 			g:set_color(table.unpack(source.color))
+
 			g:fill_ellipse(x, y, size, size)
 			g:stroke_ellipse(x, y, size, size, 1)
 
-			-- Source index text
-			local text_x, text_y = x - (size / 1.5), y - (size / 2)
 			g:set_color(table.unpack(self.colors.source_text))
-			g:draw_text(tostring(i), text_x, text_y, 10, 3)
 
-			-- Coordinate text
-			text_x, text_y = x + (size / 1), y + (size / 2)
-			local scale_factor = 0.7
-			g:scale(scale_factor, scale_factor)
-			g:set_color(table.unpack(self.colors.source_text))
-			g:draw_text(
-				string.format("%.0f° %.0f°", source.azi, source.ele),
-				text_x / scale_factor,
-				text_y / scale_factor,
-				40,
-				1
-			)
-			g:reset_transform()
+			g:draw_text(string.format("%d %.0f° %.0f°", i, source.azi, source.ele), x + 10, y + 10, 60, 1)
 
-			-- Draw selected source in YZ view
 			if self.yzview then
-				local yz_x = (source.x - (source.size / 2)) + self.plan_size
-				local yz_y = source.z - (source.size / 2) -- No inversion
+				local yz_x, yz_y = self:spherical_to_yz_screen(source.azi, source.ele, source.radius)
 
 				g:set_color(table.unpack(source.color))
-				g:fill_ellipse(yz_x, yz_y, size, size)
-				g:stroke_ellipse(yz_x, yz_y, size, size, 1)
 
-				-- Draw the number
-				local offset = 4
-				local text_x_offset = (yz_x < self.plan_size * 1.5) and offset or -offset - 6
-				local text_y_offset = (yz_y < self.plan_size / 2) and offset or -offset - 6
-				g:set_color(255, 255, 255)
-				g:draw_text(tostring(i), yz_x + text_x_offset, yz_y + text_y_offset, 10, 3)
+				g:fill_ellipse(yz_x - (size / 2), yz_y - (size / 2), size, size)
+
+				g:stroke_ellipse(yz_x - (size / 2), yz_y - (size / 2), size, size, 1)
 			end
 		end
 	end

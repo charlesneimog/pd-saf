@@ -25,6 +25,7 @@ typedef struct _encoder_tilde {
     int nPdFrameSize;
     int nInAccIndex;
     int nOutAccIndex;
+    int zeroIndexed;
 
     int nOrder;
     int nIn;
@@ -92,6 +93,13 @@ static void encoder_tilde_set(t_encoder_tilde *x, t_symbol *s, int argc, t_atom 
         } else {
             ambi_enc_setUnSolo(x->hAmbi);
         }
+    } else if (strcmp(method, "zeroindexed") == 0) {
+        int value = atom_getint(argv);
+        if (value) {
+            x->zeroIndexed = 0;
+        } else {
+            x->zeroIndexed = 1;
+        }
     } else if (strcmp(method, "normtype") == 0) {
         int newType = atom_getint(argv);
         if (newType < 1 || newType > 3) {
@@ -116,8 +124,9 @@ void encoder_tilde_set_source(t_encoder_tilde *x, t_floatarg idx, t_floatarg azi
         pd_error(x, "[saf.encoder~] Source index %d out of range (1-%d)", (int)idx, x->nIn - 1);
         return;
     }
-    ambi_enc_setSourceAzi_deg(x->hAmbi, (int)idx - 1, azi);
-    ambi_enc_setSourceElev_deg(x->hAmbi, (int)idx - 1, elev);
+
+    ambi_enc_setSourceAzi_deg(x->hAmbi, (int)idx - x->zeroIndexed, azi);
+    ambi_enc_setSourceElev_deg(x->hAmbi, (int)idx - x->zeroIndexed, elev);
     ambi_enc_refreshParams(x->hAmbi);
 }
 
@@ -303,6 +312,19 @@ void *encoder_tilde_new(t_symbol *s, int argc, t_atom *argv) {
         x->multichannel = 0;
     }
 
+    x->zeroIndexed = 1;
+
+    if (argc > 2) {
+        for (int i = 2; i < argc; i++) {
+            if (argv[i].a_type == A_SYMBOL) {
+                if (strcmp(atom_getsymbol(argv)->s_name, "-index0") != 0) {
+                    x->zeroIndexed = 0;
+                    logpost(x, PD_DEBUG, "Index 0 active");
+                }
+            }
+        }
+    }
+
     ambi_enc_create(&x->hAmbi);
     ambi_enc_init(x->hAmbi, sys_getsr());
     x->nOrder = order;
@@ -376,4 +398,6 @@ void setup_saf0x2eencoder_tilde(void) {
                     0);
     class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_set, gensym("sourcegain"), A_GIMME,
                     0);
+    class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_set, gensym("zeroindexed"),
+                    A_GIMME, 0);
 }

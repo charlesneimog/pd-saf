@@ -8,7 +8,6 @@ function mcmeter:initialize(_, args)
 	self.meter_width = 6
 	self.height = 120
 	self.frames = 20
-	self.width = self.meter_width * self.inchans
 	self.neednewrms = true
 	self.needdraw = true
 
@@ -23,6 +22,8 @@ function mcmeter:initialize(_, args)
 			self.height = type(args[i + 1]) == "number" and args[i + 1] or 4
 		end
 	end
+
+	self.width = self.meter_width * self.inchans
 	self:set_size(self.width, self.height)
 	return true
 end

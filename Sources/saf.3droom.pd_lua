@@ -1,12 +1,11 @@
-local projection = pd.Class:new():register("saf.3droom")
+local projection = pd.Class:new():register("saf.3droom2")
 
 --╭─────────────────────────────────────╮
---│            Buttom Class             │
+--│               BUTTON                │
 --╰─────────────────────────────────────╯
 local Button = {}
 Button.__index = Button
 
--- ─────────────────────────────────────
 function Button:new(father, x, y, w, h, font_size, label)
 	local obj = {
 		father = father,
@@ -19,69 +18,50 @@ function Button:new(father, x, y, w, h, font_size, label)
 		clicked = false,
 		font_size = font_size,
 	}
+
 	setmetatable(obj, self)
 	return obj
 end
 
--- ─────────────────────────────────────
-function Button:contains(px, py)
-	return px >= self.x and px <= self.x + self.w and py >= self.y and py <= self.y + self.h
+function Button:is_inside(mx, my)
+	return mx >= self.x and mx <= self.x + self.w and my >= self.y and my <= self.y + self.h
 end
 
--- ─────────────────────────────────────
-function Button:update_hover(mx, my)
-	self.hovered = self:contains(mx, my)
-end
-
--- ─────────────────────────────────────
 function Button:on_mouse_click(callback)
 	self.mouse_click_callback = callback
 end
 
--- ─────────────────────────────────────
-function Button:is_inside(mx, my)
-	return mx >= self.x and mx <= (self.x + self.w) and my >= self.y and my <= (self.y + self.h)
-end
-
--- ─────────────────────────────────────
 function Button:mouse_move(mx, my)
 	local hovered = self:is_inside(mx, my)
-	if self.hovered ~= hovered then
+
+	if hovered ~= self.hovered then
 		self.hovered = hovered
 		self.father:repaint(2)
 	end
 end
 
--- ─────────────────────────────────────
 function Button:mouse_down(mx, my)
-	if self:is_inside(mx, my) then
-		if self.mouse_click_callback then
-			self.mouse_click_callback(self.father)
-		end
-		self.clicked = true
-		return true
+	if not self:is_inside(mx, my) then
+		return false
 	end
-	return false
+
+	self.clicked = true
+
+	if self.mouse_click_callback then
+		self.mouse_click_callback(self.father)
+	end
+
+	self.father:repaint(2)
+
+	return true
 end
 
--- ─────────────────────────────────────
-function Button:mouse_up(mx, my)
+function Button:mouse_up()
 	self.clicked = false
+	self.father:repaint(2)
 end
 
--- ─────────────────────────────────────
-function Button:is_hover()
-	return self.hovered
-end
-
--- ─────────────────────────────────────
-function Button:is_clicked()
-	return self.clicked
-end
-
--- ─────────────────────────────────────
 function Button:draw(g)
-	-- Background
 	if self.clicked then
 		g:set_color(180, 180, 180)
 	elseif self.hovered then
@@ -89,50 +69,64 @@ function Button:draw(g)
 	else
 		g:set_color(200, 200, 200)
 	end
+
 	g:fill_rounded_rect(self.x, self.y, self.w, self.h, 2)
 
-	-- Border
 	g:set_color(0, 0, 0)
 	g:stroke_rounded_rect(self.x, self.y, self.w, self.h, 2, 1)
 
-	-- Text
-	local char_width = self.font_size / 2
-	local text_width = #self.label * char_width
-	local text_height = self.font_size
-	local text_x = self.x + (self.w - text_width) / 2
-	local text_y = self.y + (self.h - text_height) / 2
+	local text_w = #self.label * (self.font_size * 0.5)
+	local text_h = self.font_size
 
-	g:draw_text(self.label, text_x, text_y, text_width * 1., 10)
+	local tx = self.x + (self.w - text_w) * 0.5
+	local ty = self.y + (self.h - text_h) * 0.5
+
+	g:draw_text(self.label, tx, ty, text_w, text_h)
 end
 
 --╭─────────────────────────────────────╮
---│        Object Initialization        │
+--│            INITIALIZE               │
 --╰─────────────────────────────────────╯
 function projection:initialize(name, args)
 	self.inlets = 1
 	self.outlets = 2
 
-	-- initialization
+	self.coord_mode = "saf"
+	self.origin_mode = "center"
+
+	if type(args) == "table" then
+		for i, arg in ipairs(args) do
+			if arg == "-origin" then
+				local mode = tostring(args[i + 1] or "")
+
+				if mode == "center" or mode == "room" then
+					self.origin_mode = mode
+				end
+			end
+		end
+	end
+
 	self.rotation_x = 0
 	self.rotation_y = 0
+
 	self.last_mouse_x = 0
 	self.last_mouse_y = 0
-	self.linex = {}
-	self.liney = {}
-	self.linez = {}
-	self.now = 0
-	self.curve_progress = 0
+
 	self.animate = false
+	self.now = 0
+
 	self.clock_animation = pd.Clock:new():register(self, "point_animation")
-	self.room_xyz = { x = 3, y = 3, z = 3 }
-	self.trajectories = {}
 
-	self.speakers = {
-		{ -0.5, 0, -0.5 },
-		{ 0.5, 0, -0.5 },
+	self.room_xyz = {
+		x = 3,
+		y = 3,
+		z = 3,
+	}
 
-		{ 0.5, 0, 0.5 },
-		{ -0.5, 0, 0.5 },
+	self.room_xyz_internal = {
+		x = 3,
+		y = 3,
+		z = 3,
 	}
 
 	self.scale_xyz = {
@@ -141,344 +135,124 @@ function projection:initialize(name, args)
 		z = 2,
 	}
 
+	self:update_internal_scale()
+
 	self.points = {
 		{ -0.5, -0.5, -0.5 },
 		{ 0.5, -0.5, -0.5 },
 		{ 0.5, 0.5, -0.5 },
 		{ -0.5, 0.5, -0.5 },
+
 		{ -0.5, -0.5, 0.5 },
 		{ 0.5, -0.5, 0.5 },
 		{ 0.5, 0.5, 0.5 },
 		{ -0.5, 0.5, 0.5 },
 	}
 
+	self.speakers = {
+		{ x = -0.5, y = 0, z = -0.5 },
+		{ x = 0.5, y = 0, z = -0.5 },
+		{ x = 0.5, y = 0, z = 0.5 },
+		{ x = -0.5, y = 0, z = 0.5 },
+	}
+
+	self.trajectories = {}
 	self:set_size(350, 350)
-	local width, height = self:get_size()
 
-	-- play
+	local width = 350
+
 	self.play_button = Button:new(self, width - 42, 3, 40, 20, 12, "play")
-	self.play_button:on_mouse_click(self.play_click)
-
-	-- reset
 	self.reset_button = Button:new(self, width - 85, 3, 40, 20, 12, "reset")
-	self.reset_button:on_mouse_click(self.reset_click)
+	self.export_button = Button:new(self, width - 140, 3, 52, 20, 12, "export")
 
-	-- export
-	self.export_button = Button:new(self, width - 135, 3, 47, 20, 12, "export")
+	self.play_button:on_mouse_click(self.play_click)
+	self.reset_button:on_mouse_click(self.reset_click)
 	self.export_button:on_mouse_click(self.export_click)
 
 	return true
 end
 
 --╭─────────────────────────────────────╮
---│           Buttons methods           │
+--│           TRAJECTORIES              │
 --╰─────────────────────────────────────╯
-function projection:play_click()
-	self.animate = true
-	self.now = 0 -- This will be in milliseconds
-	self.curve_progress = 0
+function projection:get_trajectory(index)
+	if not self.trajectories[index] then
+		self.trajectories[index] = {
+			x = {},
+			y = {},
+			z = {},
+			time = {},
+			point = nil,
+			redraw = false,
+		}
+	end
 
-	-- Reset all trajectory animation states and create time arrays if missing
-	for index, trajectory in pairs(self.trajectories) do
-		if trajectory.x and trajectory.y and trajectory.z and #trajectory.x > 0 then
-			-- Create time array if it doesn't exist (in milliseconds)
-			if not trajectory.time or #trajectory.time == 0 then
-				trajectory.time = {}
-				local point_count = #trajectory.x
-				for i = 1, point_count do
-					-- Create evenly spaced time points (0, 1000, 2000, ... milliseconds)
-					trajectory.time[i] = (i - 1) * 2000 -- 2000ms (2 seconds) between points
-				end
-			end
+	return self.trajectories[index]
+end
 
-			trajectory.start_time = self.now
-			trajectory.current_point = 1
-			trajectory.progress = 0
-			-- Set initial point
-			trajectory.point = {
-				trajectory.x[1] or 0,
-				trajectory.y[1] or 0,
-				trajectory.z[1] or 0,
-			}
-			trajectory.redraw = true
+-- ─────────────────────────────────────
+function projection:is_valid_trajectory(t)
+	if not t then
+		return false
+	end
 
-			pd.post(
-				string.format(
-					"Trajectory %d: %d points, time range: %d to %d ms",
-					index,
-					#trajectory.x,
-					trajectory.time[1],
-					trajectory.time[#trajectory.time]
-				)
-			)
+	local x = t.x or {}
+	local y = t.y or {}
+	local z = t.z or {}
+
+	return #x > 1 and #x == #y and #x == #z
+end
+
+-- ─────────────────────────────────────
+function projection:count_trajectories()
+	local count = 0
+
+	for _, t in pairs(self.trajectories) do
+		if self:is_valid_trajectory(t) then
+			count = count + 1
 		end
 	end
 
-	pd.post("Starting animation with " .. self:count_trajectories() .. " trajectories")
+	return count
+end
+
+--╭─────────────────────────────────────╮
+--│              PLAYBACK               │
+--╰─────────────────────────────────────╯
+function projection:start_animation()
+	self.animate = true
+	self.now = 0
+
+	for _, t in pairs(self.trajectories) do
+		if self:is_valid_trajectory(t) then
+			if #t.time ~= #t.x then
+				t.time = {}
+				for i = 1, #t.x do
+					t.time[i] = (i - 1) * 2000
+				end
+			end
+
+			t.point = {
+				t.x[1],
+				t.y[1],
+				t.z[1],
+			}
+
+			t.redraw = true
+		end
+	end
+
 	self.clock_animation:delay(0)
 end
 
 -- ─────────────────────────────────────
-function projection:reset_click()
-	self.rotation_y = 0
-	self.rotation_x = 0
-	self:repaint()
-end
-
--- ─────────────────────────────────────
-function projection:export_click()
-	local file, err = io.open("trajectories.txt", "w")
-	if not file then
-		self:error("Failed to open file: " .. err)
-		return
-	end
-
-	for index, t in pairs(self.trajectories or {}) do
-		local x = t.x or {}
-		local y = t.y or {}
-		local z = t.z or {}
-
-		file:write("trajectory ", index, "\n")
-
-		local len = math.max(#x, #y, #z)
-		for i = 1, len do
-			local xi = x[i] or 0
-			local yi = y[i] or 0
-			local zi = z[i] or 0
-			file:write(string.format("%.6f,%.6f,%.6f\n", xi, yi, zi))
-		end
-		file:write("\n")
-	end
-
-	file:close()
-	pd.post("done")
-end
-
---╭─────────────────────────────────────╮
---│               Methods               │
---╰─────────────────────────────────────╯
-function projection:in_1_size(args)
-	local max_arg = math.max(args[1], args[2], args[3])
-	if max_arg == 0 then
-		max_arg = 1
-	end
-	self.room_xyz = { x = args[1], y = args[2], z = args[3] }
-
-	local relative_scale = 2 / max_arg
-	self.scale_xyz = {
-		x = args[1] * relative_scale,
-		y = args[2] * relative_scale,
-		z = args[3] * relative_scale,
-	}
-
-	-- resetar rotação
-	self.rotation_x = 0
-	self.rotation_y = 0
-	self:repaint()
-end
-
--- ─────────────────────────────────────
-function projection:in_1_reset(args)
-	self.rotation_y = 0
-	self.rotation_x = 0
-	self:repaint()
-end
-
--- ─────────────────────────────────────
-function projection:in_1_point(args)
-	if #args < 3 then
-		return
-	end
-
-	self.point = {
-		tonumber(args[1]) or 0,
-		tonumber(args[2]) or 0,
-		tonumber(args[3]) or 0,
-	}
-end
-
--- ─────────────────────────────────────
-function projection:in_1_time(args)
-	local index = math.floor(args[1])
-	if self.trajectories[index] == nil then
-		self.trajectories[index] = {}
-	end
-
-	local times = {}
-	for i = 2, #args do
-		times[i - 1] = tonumber(args[i]) -- Assuming time values are already in milliseconds
-	end
-
-	self.trajectories[index]["time"] = times
-end
-
--- ─────────────────────────────────────
-function projection:in_1_roomdim(args)
-	self.room_xyz = {
-		x = args[1],
-		y = args[2],
-		z = args[3],
-	}
-	self:repaint()
-end
-
-function projection:in_1_speaker(args)
-	if not args or #args < 3 then
-		return
-	end
-
-	local index = math.floor(tonumber(args[1]) or 0)
-	if index < 1 then
-		self:error("Speaker index must be >= 1")
-		return
-	end
-
-	local azimuth = tonumber(args[2]) or 0
-	local elevation = tonumber(args[3]) or 0
-	local radius = tonumber(args[4]) or 0.5
-
-	self:outlet(2, "speaker", { index, azimuth, elevation })
-	local x, y, z = self:azimuth_elevation_to_xyz(azimuth, elevation, radius)
-	self.speakers[index] = { x, y, z }
-	self:repaint()
-end
-
--- ─────────────────────────────────────
-function projection:in_1_linex(args)
-	local index = math.floor(args[1])
-	local maxX = (self.room_xyz.x / 2) + 0.01
-
-	local scaled_args = {}
-	for i = 2, #args do
-		local v = args[i]
-		if v >= maxX or v <= -maxX then
-			self:error("Point out of range x: " .. v .. ". Should be between -" .. maxX .. " and " .. maxX)
-			return
-		end
-		scaled_args[i - 1] = v / (2 * maxX)
-	end
-
-	if self.trajectories[index] == nil then
-		self.trajectories[index] = {}
-	end
-
-	self.trajectories[index]["x"] = scaled_args
-	local trajectoryX = self.trajectories[index]["x"]
-	local trajectoryY = self.trajectories[index]["y"]
-	local trajectoryZ = self.trajectories[index]["z"]
-
-	if trajectoryX ~= nil and trajectoryY ~= nil and trajectoryZ ~= nil then
-		local lenX = #trajectoryX
-		local lenY = #trajectoryY
-		local lenZ = #trajectoryZ
-		if lenX > 0 and (lenX == lenY or lenX == lenZ) then
-			self:repaint(3)
-		end
-	end
-end
-
--- ─────────────────────────────────────
-function projection:in_1_liney(args)
-	local index = math.floor(args[1])
-	local maxY = (self.room_xyz.y / 2) + 0.01
-
-	local scaled_args = {}
-	for i = 2, #args do
-		local v = args[i]
-		if v >= maxY or v <= -maxY then
-			self:error("Point out of range y: " .. v .. ". Should be between -" .. maxY .. " and " .. maxY)
-			return
-		end
-		scaled_args[i - 1] = v / (2 * maxY)
-	end
-
-	if self.trajectories[index] == nil then
-		self.trajectories[index] = {}
-	end
-
-	self.trajectories[index]["y"] = scaled_args
-
-	local trajectoryX = self.trajectories[index]["x"]
-	local trajectoryY = self.trajectories[index]["y"]
-	local trajectoryZ = self.trajectories[index]["z"]
-	if trajectoryX ~= nil and trajectoryY ~= nil and trajectoryZ ~= nil then
-		local lenX = #trajectoryX
-		local lenY = #trajectoryY
-		local lenZ = #trajectoryZ
-		if lenX > 0 and (lenX == lenY or lenX == lenZ) then
-			self:repaint(3)
-		end
-	end
-end
-
--- ─────────────────────────────────────
-function projection:in_1_linez(args)
-	local index = math.floor(args[1])
-	local maxZ = (self.room_xyz.z / 2) + 0.01
-
-	local scaled_args = {}
-	for i = 2, #args do
-		local v = args[i]
-		if v >= maxZ or v <= -maxZ then
-			self:error("Point out of range z: " .. v .. ". Should be between -" .. maxZ .. " and " .. maxZ)
-			return
-		end
-		scaled_args[i - 1] = v / (2 * maxZ)
-	end
-	if self.trajectories[index] == nil then
-		self.trajectories[index] = {}
-	end
-	self.trajectories[index]["z"] = scaled_args
-
-	local trajectoryX = self.trajectories[index]["x"]
-	local trajectoryY = self.trajectories[index]["y"]
-	local trajectoryZ = self.trajectories[index]["z"]
-
-	if trajectoryX ~= nil and trajectoryY ~= nil and trajectoryZ ~= nil then
-		local lenX = #trajectoryX
-		local lenY = #trajectoryY
-		local lenZ = #trajectoryZ
-		if lenX > 0 and (lenX == lenY or lenX == lenZ) then
-			self:repaint(3)
-		end
-	end
+function projection:play_click()
+	self:start_animation()
 end
 
 -- ─────────────────────────────────────
 function projection:in_1_play()
-	self.animate = true
-	self.now = 0 -- Milliseconds
-	self.curve_progress = 0
-
-	-- Reset all trajectory animation states and create time arrays if missing
-	for index, trajectory in pairs(self.trajectories) do
-		if trajectory.x and trajectory.y and trajectory.z and #trajectory.x > 0 then
-			-- Create time array if it doesn't exist (in milliseconds)
-			if not trajectory.time or #trajectory.time == 0 then
-				trajectory.time = {}
-				local point_count = #trajectory.x
-				for i = 1, point_count do
-					-- Create evenly spaced time points (0, 1000, 2000, ... milliseconds)
-					trajectory.time[i] = (i - 1) * 2000 -- 2000ms (2 seconds) between points
-				end
-			end
-
-			trajectory.start_time = self.now
-			trajectory.current_point = 1
-			trajectory.progress = 0
-			-- Set initial point
-			trajectory.point = {
-				trajectory.x[1] or 0,
-				trajectory.y[1] or 0,
-				trajectory.z[1] or 0,
-			}
-			trajectory.redraw = true
-		else
-			trajectory.redraw = false
-		end
-	end
-
-	self.clock_animation:delay(0)
+	self:start_animation()
 end
 
 -- ─────────────────────────────────────
@@ -486,123 +260,238 @@ function projection:in_1_stop()
 	self.animate = false
 end
 
---╭─────────────────────────────────────╮
---│               Clocks                │
---╰─────────────────────────────────────╯
+-- ─────────────────────────────────────
 function projection:point_animation()
 	if not self.animate then
 		return
 	end
 
-	local now = self.now -- Current time in milliseconds
-	local has_animation = false
-	local all_finished = true -- Track if ALL trajectories are finished
+	local all_finished = true
 
-	for index, trajectory in pairs(self.trajectories) do
-		local tx, ty, tz = trajectory.x, trajectory.y, trajectory.z
-		local times = trajectory.time
+	for _, t in pairs(self.trajectories) do
+		if self:is_valid_trajectory(t) then
+			local total = t.time[#t.time]
 
-		if tx and ty and tz and times and #tx > 1 and #tx == #ty and #tx == #tz then
-			local start_time = trajectory.start_time or 0
-			local elapsed = now - start_time -- Elapsed time in milliseconds
-
-			-- Get the total duration of this trajectory
-			local total_duration = times[#times] or 0
-
-			if elapsed <= total_duration then
-				-- Trajectory is still running
+			if self.now <= total then
 				all_finished = false
 
-				-- Find current time segment
-				local current_segment = 1
-				local segment_start_time = times[1] or 0
-				local segment_end_time = times[#times] or 0
+				local segment = 1
 
-				for i = 1, #times - 1 do
-					segment_start_time = times[i] or 0
-					segment_end_time = times[i + 1] or 0
-					if elapsed >= segment_start_time and elapsed < segment_end_time then
-						current_segment = i
+				for i = 1, #t.time - 1 do
+					if self.now >= t.time[i] and self.now <= t.time[i + 1] then
+						segment = i
 						break
-					elseif i == #times - 1 and elapsed >= segment_end_time then
-						current_segment = i
 					end
 				end
 
-				-- Calculate progress within current segment (0 to 1)
-				local segment_duration = segment_end_time - segment_start_time
-				local segment_progress = 0
+				local t1 = t.time[segment]
+				local t2 = t.time[segment + 1]
+				local duration = math.max(1, t2 - t1)
+				local alpha = (self.now - t1) / duration
+				alpha = math.max(0, math.min(1, alpha))
 
-				if segment_duration > 0 then
-					segment_progress = (elapsed - segment_start_time) / segment_duration
-					segment_progress = math.max(0, math.min(1, segment_progress))
-				else
-					segment_progress = 1 -- If duration is 0, jump to end
+				local function lerp(a, b, t)
+					return a + (b - a) * t
 				end
 
-				if current_segment <= #tx - 1 then
-					-- Linear interpolation between current segment points
-					local x1, x2 = tx[current_segment] or 0, tx[current_segment + 1] or 0
-					local y1, y2 = ty[current_segment] or 0, ty[current_segment + 1] or 0
-					local z1, z2 = tz[current_segment] or 0, tz[current_segment + 1] or 0
+				t.point = {
+					lerp(t.x[segment], t.x[segment + 1], alpha),
+					lerp(t.y[segment], t.y[segment + 1], alpha),
+					lerp(t.z[segment], t.z[segment + 1], alpha),
+				}
 
-					local x = x1 + (x2 - x1) * segment_progress
-					local y = y1 + (y2 - y1) * segment_progress
-					local z = z1 + (z2 - z1) * segment_progress
-
-					trajectory.point = { x, y, z }
-					trajectory.redraw = true
-					has_animation = true
-				else
-					-- Should not reach here if we check elapsed <= total_duration
-					trajectory.point = { tx[#tx] or 0, ty[#ty] or 0, tz[#tz] or 0 }
-					trajectory.redraw = true
-					has_animation = true
-				end
-			else
-				-- This trajectory has finished
-				trajectory.point = { tx[#tx] or 0, ty[#ty] or 0, tz[#tz] or 0 }
-				trajectory.redraw = true
-				has_animation = true -- Still need to redraw the final position
+				t.redraw = true
 			end
 		end
 	end
 
-	-- Always repaint if there are trajectories to show (even if they're finished)
-	if has_animation then
-		self:repaint(4)
+	self:repaint(4)
+
+	if all_finished then
+		self.animate = false
+		return
+	end
+	self.now = self.now + 30
+	self.clock_animation:delay(30)
+end
+
+--╭─────────────────────────────────────╮
+--│          COORDINATES                │
+--╰─────────────────────────────────────╯
+function projection:update_internal_scale()
+	local rx = self.room_xyz.x
+	local ry = self.room_xyz.y
+	local rz = self.room_xyz.z
+
+	if self.coord_mode == "saf" then
+		self.room_xyz_internal = {
+			x = ry,
+			y = rz,
+			z = rx,
+		}
+	else
+		self.room_xyz_internal = {
+			x = rx,
+			y = ry,
+			z = rz,
+		}
 	end
 
-	-- Continue animation only if not all trajectories are finished
-	if not all_finished then
-		self.clock_animation:delay(30)
-		self.now = now + 30
-	else
-		-- All trajectories have completed
-		self.animate = false
-		pd.post("Animation completed - all trajectories finished")
+	local max_dim = math.max(self.room_xyz_internal.x, self.room_xyz_internal.y, self.room_xyz_internal.z)
+	max_dim = math.max(1, max_dim)
+	local s = 2 / max_dim
+
+	self.scale_xyz = {
+		x = self.room_xyz_internal.x * s,
+		y = self.room_xyz_internal.y * s,
+		z = self.room_xyz_internal.z * s,
+	}
+end
+
+-- ─────────────────────────────────────
+function projection:rotate_x(v, angle)
+	local x, y, z = table.unpack(v)
+
+	local c = math.cos(angle)
+	local s = math.sin(angle)
+
+	return {
+		x,
+		y * c - z * s,
+		y * s + z * c,
+	}
+end
+
+-- ─────────────────────────────────────
+function projection:rotate_y(v, angle)
+	local x, y, z = table.unpack(v)
+
+	local c = math.cos(angle)
+	local s = math.sin(angle)
+
+	return {
+		x * c + z * s,
+		y,
+		-x * s + z * c,
+	}
+end
+
+-- ─────────────────────────────────────
+function projection:project_point(v, scale, offsetX, offsetY, distance)
+	local p = self:rotate_y(v, self.rotation_y)
+	p = self:rotate_x(p, self.rotation_x)
+
+	local depth = math.max(0.05, distance - p[3])
+
+	local z = 1 / depth
+
+	return {
+		p[1] * z * scale + offsetX,
+		p[2] * z * scale + offsetY,
+		depth,
+	}
+end
+
+--╭─────────────────────────────────────╮
+--│               INPUTS                │
+--╰─────────────────────────────────────╯
+function projection:in_1_linex(args)
+	local index = math.floor(args[1])
+	local t = self:get_trajectory(index)
+	t.x = {}
+	for i = 2, #args do
+		t.x[i - 1] = tonumber(args[i]) or 0
+	end
+	self:repaint(3)
+end
+
+-- ─────────────────────────────────────
+function projection:in_1_liney(args)
+	local index = math.floor(args[1])
+	local t = self:get_trajectory(index)
+	t.y = {}
+	for i = 2, #args do
+		t.y[i - 1] = tonumber(args[i]) or 0
+	end
+	self:repaint(3)
+end
+
+-- ─────────────────────────────────────
+function projection:in_1_linez(args)
+	local index = math.floor(args[1])
+	local t = self:get_trajectory(index)
+
+	t.z = {}
+	for i = 2, #args do
+		t.z[i - 1] = tonumber(args[i]) or 0
+	end
+
+	self:repaint(3)
+end
+
+-- ─────────────────────────────────────
+function projection:in_1_time(args)
+	local index = math.floor(args[1])
+	local t = self:get_trajectory(index)
+	t.time = {}
+	for i = 2, #args do
+		t.time[i - 1] = tonumber(args[i]) or 0
 	end
 end
 
 -- ─────────────────────────────────────
-function projection:count_trajectories()
-	local count = 0
-	for index, trajectory in pairs(self.trajectories) do
-		if trajectory.x and trajectory.y and trajectory.z and #trajectory.x > 0 then
-			count = count + 1
-		end
-	end
-	return count
+function projection:in_1_roomdim(args)
+	self.room_xyz = {
+		x = tonumber(args[1]) or self.room_xyz.x,
+		y = tonumber(args[2]) or self.room_xyz.y,
+		z = tonumber(args[3]) or self.room_xyz.z,
+	}
+
+	self:update_internal_scale()
+	self:repaint()
 end
 
 --╭─────────────────────────────────────╮
---│            Mouse Methods            │
+--│               BUTTONS               │
+--╰─────────────────────────────────────╯
+function projection:reset_click()
+	self.rotation_x = 0
+	self.rotation_y = 0
+
+	self:repaint()
+end
+
+-- ─────────────────────────────────────
+function projection:export_click()
+	local file, err = io.open("trajectories.txt", "w")
+
+	if not file then
+		self:error(err)
+		return
+	end
+
+	for index, t in pairs(self.trajectories) do
+		if self:is_valid_trajectory(t) then
+			file:write("trajectory ", index, "\n")
+			for i = 1, #t.x do
+				file:write(string.format("%.6f,%.6f,%.6f\n", t.x[i], t.y[i], t.z[i]))
+			end
+			file:write("\n")
+		end
+	end
+
+	file:close()
+
+	pd.post("export complete")
+end
+
+--╭─────────────────────────────────────╮
+--│               MOUSE                 │
 --╰─────────────────────────────────────╯
 function projection:mouse_down(x, y)
 	self.last_mouse_x = x
 	self.last_mouse_y = y
 
-	--
 	self.play_button:mouse_down(x, y)
 	self.reset_button:mouse_down(x, y)
 	self.export_button:mouse_down(x, y)
@@ -610,9 +499,9 @@ end
 
 -- ─────────────────────────────────────
 function projection:mouse_up(x, y)
-	self.play_button:mouse_up(x, y)
-	self.reset_button:mouse_up(x, y)
-	self.export_button:mouse_up(x, y)
+	self.play_button:mouse_up()
+	self.reset_button:mouse_up()
+	self.export_button:mouse_up()
 end
 
 -- ─────────────────────────────────────
@@ -632,59 +521,30 @@ function projection:mouse_drag(x, y)
 
 	self.last_mouse_x = x
 	self.last_mouse_y = y
+
 	self:repaint()
 end
 
--- ─────────────────────────────────────
+--╭─────────────────────────────────────╮
+--│               COLORS                │
+--╰─────────────────────────────────────╯
 function projection:index_to_color(index)
-	local distinct_colors = {
-		{ 230, 25, 75 }, -- Red
-		{ 60, 180, 75 }, -- Green
-		{ 255, 225, 25 }, -- Yellow
-		{ 0, 130, 200 }, -- Blue
-		{ 245, 130, 48 }, -- Orange
-		{ 145, 30, 180 }, -- Purple
-		{ 70, 240, 240 }, -- Cyan
-		{ 240, 50, 230 }, -- Magenta
-		{ 210, 245, 60 }, -- Lime
-		{ 250, 190, 190 }, -- Pink
-		{ 0, 128, 128 }, -- Teal
-		{ 128, 128, 0 }, -- Olive
+	local colors = {
+		{ 230, 25, 75 },
+		{ 60, 180, 75 },
+		{ 255, 225, 25 },
+		{ 0, 130, 200 },
+		{ 245, 130, 48 },
+		{ 145, 30, 180 },
+		{ 70, 240, 240 },
+		{ 240, 50, 230 },
 	}
 
-	local color = distinct_colors[(index % #distinct_colors) + 1]
-	return { color[1], color[2], color[3] }
+	return colors[((index - 1) % #colors) + 1]
 end
 
 --╭─────────────────────────────────────╮
---│         Paint: Make Buttom          │
---╰─────────────────────────────────────╯
-function projection:draw_button(g, x, y, w, h, text, hover)
-	local font_size = 12
-	local char_width = font_size / 2 -- largura média estimada por caractere
-	local text_width = #text * char_width
-	local text_height = font_size
-
-	local text_x = x + (w - text_width) / 2
-	local text_y = y + (h - text_height) / 2
-
-	if hover then
-		g:set_color(200, 200, 200)
-	else
-		g:set_color(100, 100, 100)
-	end
-
-	g:fill_rounded_rect(x, y, w, h, 4)
-
-	g:set_color(0, 0, 0)
-	g:draw_text(text, text_x, text_y, text_width, font_size)
-
-	g:set_color(0, 0, 0)
-	g:stroke_rounded_rect(x, y, w, h, 4, 1)
-end
-
---╭─────────────────────────────────────╮
---│     Paint: create box and coord     │
+--│               PAINT                 │
 --╰─────────────────────────────────────╯
 function projection:paint(g)
 	g:set_color(240, 240, 240)
@@ -694,115 +554,21 @@ function projection:paint(g)
 	local max_scale = math.max(self.scale_xyz.x, self.scale_xyz.y, self.scale_xyz.z)
 	local scale = (math.min(width, height) * 0.55) / max_scale
 
-	local offsetX = width / 2
-	local offsetY = height / 2
-	local distance = 2
+	local offsetX = width * 0.5
+	local offsetY = height * 0.5
 
-	local rotated_3d = {}
+	local distance = 2
 	local projected = {}
 
 	for i, p in ipairs(self.points) do
-		-- Aplica escala
 		local scaled = {
 			p[1] * self.scale_xyz.x,
 			p[2] * self.scale_xyz.y,
 			p[3] * self.scale_xyz.z,
 		}
-		-- Rotaciona no eixo Y e X
-		local rotated = self:rotate_y(scaled, self.rotation_y)
-		rotated = self:rotate_x(rotated, self.rotation_x)
-		rotated_3d[i] = rotated
-
-		-- Projeção perspectiva
-		local z_diff = distance - rotated[3]
-		if z_diff <= 0.01 then
-			z_diff = 0.01 -- evitar divisão por zero / clipping
-		end
-		local z = 1 / z_diff
-
-		projected[i] = {
-			rotated[1] * z * scale + offsetX,
-			rotated[2] * z * scale + offsetY,
-		}
+		projected[i] = self:project_point(scaled, scale, offsetX, offsetY, distance)
 	end
 
-	-- Faces do cubo (indices dos vértices)
-	local faces = {
-		{ 1, 2, 3, 4 },
-		{ 5, 6, 7, 8 },
-		{ 1, 2, 6, 5 },
-		{ 2, 3, 7, 6 },
-		{ 3, 4, 8, 7 },
-		{ 4, 1, 5, 8 },
-	}
-
-	-- Calcula profundidade média de cada face para ordenar desenho
-	local face_depths = {}
-	for _, face in ipairs(faces) do
-		local depth = 0
-		for j = 1, 4 do
-			depth = depth + rotated_3d[face[j]][3]
-		end
-		depth = depth / 4
-		table.insert(face_depths, { depth = depth, face = face })
-	end
-
-	-- Ordena as faces da mais distante para a mais próxima
-	table.sort(face_depths, function(a, b)
-		return a.depth > b.depth
-	end)
-
-	-- Desenha faces preenchidas
-	for _, entry in ipairs(face_depths) do
-		local face = entry.face
-		local a, b, c, d = projected[face[1]], projected[face[2]], projected[face[3]], projected[face[4]]
-		local p = Path(a[1], a[2])
-		p:line_to(b[1], b[2])
-		p:line_to(c[1], c[2])
-		p:line_to(d[1], d[2])
-		p:close()
-		g:set_color(197, 220, 229)
-		g:fill_path(p)
-	end
-
-	-- Desenha eixos X, Y, Z
-	local corner_offsetX = 25
-	local corner_offsetY = 25
-	local fixed_scale = 100 -- escala razoável para visualizar eixo fixo
-	local fixed_distance = 1.5 -- distância para projeção
-
-	self:draw_3d_axis(
-		g,
-		{ 0.3, 0, 0 },
-		"x",
-		{ 255, 100, 100 },
-		fixed_scale,
-		corner_offsetX,
-		corner_offsetY,
-		fixed_distance
-	)
-	self:draw_3d_axis(
-		g,
-		{ 0, 0.3, 0 },
-		"y",
-		{ 100, 255, 100 },
-		fixed_scale,
-		corner_offsetX,
-		corner_offsetY,
-		fixed_distance
-	)
-	self:draw_3d_axis(
-		g,
-		{ 0, 0, 0.3 },
-		"z",
-		{ 100, 100, 255 },
-		fixed_scale,
-		corner_offsetX,
-		corner_offsetY,
-		fixed_distance
-	)
-
-	-- Desenha as arestas do cubo
 	local edges = {
 		{ 1, 2 },
 		{ 2, 3 },
@@ -817,304 +583,96 @@ function projection:paint(g)
 		{ 3, 7 },
 		{ 4, 8 },
 	}
-	g:set_color(255, 255, 255, 255)
+
+	g:set_color(255, 255, 255)
+
 	for _, edge in ipairs(edges) do
-		local a, b = projected[edge[1]], projected[edge[2]]
+		local a = projected[edge[1]]
+		local b = projected[edge[2]]
+
 		g:draw_line(a[1], a[2], b[1], b[2], 1)
-	end
-
-	-- DRAW SPEAKERS
-	g:set_color(255, 165, 0)
-
-	for _, speaker in pairs(self.speakers) do
-		-- Posição original
-		local sx, sy, sz = speaker[1], speaker[2], speaker[3]
-
-		-- Direção para o centro (normalizado)
-		local dx, dy, dz = -sx, -sy, -sz
-		local length = math.sqrt(dx * dx + dy * dy + dz * dz)
-		if length == 0 then
-			length = 1
-		end
-		dx, dy, dz = dx / length, dy / length, dz / length
-
-		-- Posição + pequena extensão na direção do centro (para desenhar seta/lado frontal)
-		local front = {
-			sx + dx * 0.1, -- ajustável: tamanho do vetor "frente"
-			sy + dy * 0.1,
-			sz + dz * 0.1,
-		}
-
-		-- Escala e rotação
-		local function project(p)
-			local scaled = {
-				p[1] * self.scale_xyz.x,
-				p[2] * self.scale_xyz.y,
-				p[3] * self.scale_xyz.z,
-			}
-			local rotated = self:rotate_y(scaled, self.rotation_y)
-			return self:rotate_x(rotated, self.rotation_x)
-		end
-
-		local p1 = project({ sx, sy, sz })
-		local p2 = project(front)
-
-		local z1 = 1 / math.max(0.1, distance - p1[3])
-		local z2 = 1 / math.max(0.1, distance - p2[3])
-
-		local x1 = p1[1] * z1 * scale + offsetX
-		local y1 = p1[2] * z1 * scale + offsetY
-		local x2 = p2[1] * z2 * scale + offsetX
-		local y2 = p2[2] * z2 * scale + offsetY
-
-		-- Tamanho do alto-falante baseado na profundidade
-		local z_diff = distance - p1[3]
-		local size = 20 / z_diff
-		size = math.max(5, math.min(size, 15))
-
-		local rect_size = size * 1.3
-		g:set_color(50, 50, 50, 180)
-		g:fill_rounded_rect(x1 - rect_size / 2, y1 - rect_size / 2, rect_size, rect_size, 2)
-
-		-- Cone laranja (elipse)
-		g:set_color(255, 165, 0)
-		g:fill_ellipse(x1 - size / 2, y1 - size / 2, size, size)
-
-		-- Contorno preto
-		g:set_color(0, 0, 0)
-		g:stroke_ellipse(x1 - size / 2, y1 - size / 2, size, size, 1)
-
-		-- Círculo interno
-		g:set_color(50, 50, 50)
-		g:fill_ellipse(x1 - size / 6, y1 - size / 6, size / 3, size / 3)
-
-		-- Linha frontal indicando orientação
-		g:set_color(255, 100, 0)
-		g:draw_line(x1, y1, x2, y2, 1)
-
-		g:set_color(255, 165, 0) -- reset
 	end
 end
 
---╭─────────────────────────────────────╮
---│          PAINT: Buttons             │
---╰─────────────────────────────────────╯
+-- ─────────────────────────────────────
 function projection:paint_layer_2(g)
 	self.play_button:draw(g)
 	self.reset_button:draw(g)
 	self.export_button:draw(g)
 end
 
---╭─────────────────────────────────────╮
---│          PAINT: Trajectory          │
---╰─────────────────────────────────────╯
+-- ─────────────────────────────────────
 function projection:paint_layer_3(g)
 	local width, height = self:get_size()
 	local max_scale = math.max(self.scale_xyz.x, self.scale_xyz.y, self.scale_xyz.z)
 	local scale = (math.min(width, height) * 0.5) / max_scale
 
-	local offsetX = width / 2
-	local offsetY = height / 2
+	local offsetX = width * 0.5
+	local offsetY = height * 0.5
+
 	local distance = 2
-	g:fill_rect(width - 2, height - 2, 2, 2)
 
-	for index, trajectory in pairs(self.trajectories) do
-		local linex = trajectory.x or {}
-		local liney = trajectory.y or {}
-		local linez = trajectory.z or {}
+	for index, t in pairs(self.trajectories) do
+		if self:is_valid_trajectory(t) then
+			local path = nil
 
-		if #linex > 1 and #linex == #liney and #linex == #linez then
-			local points_2d = {}
-			local depths = {}
-			local points_3d = {} -- Store 3D points for later curve evaluation
-
-			-- Projeta todos os pontos 3D para 2D
-			for i = 1, #linex do
-				local scaled = {
-					linex[i] * self.scale_xyz.x,
-					liney[i] * self.scale_xyz.y,
-					linez[i] * self.scale_xyz.z,
+			for i = 1, #t.x do
+				local p = {
+					t.x[i] * self.scale_xyz.x,
+					t.y[i] * self.scale_xyz.y,
+					t.z[i] * self.scale_xyz.z,
 				}
-				local p = self:rotate_y(scaled, self.rotation_y)
-				p = self:rotate_x(p, self.rotation_x)
-				points_3d[i] = p -- Store the 3D rotated point
 
-				local depth = math.max(0.1, distance - p[3])
-				local z = 1 / depth
-				local x2d = p[1] * z * scale + offsetX
-				local y2d = p[2] * z * scale + offsetY
-
-				points_2d[#points_2d + 1] = { x2d, y2d }
-				depths[#depths + 1] = depth
+				local proj = self:project_point(p, scale, offsetX, offsetY, distance)
+				if not path then
+					path = Path(proj[1], proj[2])
+				else
+					path:line_to(proj[1], proj[2])
+				end
 			end
 
-			-- Store the curve information for evaluation (only latest trajectory kept)
-			self.curve_points_3d = points_3d
-			self.curve_scale = scale
-			self.curve_distance = distance
-			self.curve_offset = { x = offsetX, y = offsetY }
-
-			if #points_2d >= 2 then
-				local avg_depth = 0
-				for i = 1, #depths do
-					avg_depth = avg_depth + depths[i]
-				end
-
+			if path then
 				g:set_color(table.unpack(self:index_to_color(index)))
-				local path = Path(points_2d[1][1], points_2d[1][2])
-				for i = 2, #points_2d do
-					local p1 = points_2d[i]
-					path:line_to(p1[1], p1[2])
-				end
-
-				g:stroke_path(path, 1)
+				g:stroke_path(path, 1.5)
 			end
 		end
 	end
 end
 
---╭─────────────────────────────────────╮
---│            Paint points             │
---╰─────────────────────────────────────╯
+-- ─────────────────────────────────────
 function projection:paint_layer_4(g)
 	local width, height = self:get_size()
 	local max_scale = math.max(self.scale_xyz.x, self.scale_xyz.y, self.scale_xyz.z)
 	local scale = (math.min(width, height) * 0.5) / max_scale
 
-	local offsetX = width / 2
-	local offsetY = height / 2
+	local offsetX = width * 0.5
+	local offsetY = height * 0.5
+
 	local distance = 2
 
-	for index, trajectory in pairs(self.trajectories) do
-		local point = trajectory.point
-
-		if point and trajectory.redraw then
-			self:outlet(
-				1,
-				"source",
-				{ index, point[1] * self.room_xyz.x, point[2] * self.room_xyz.y, point[3] * self.room_xyz.z }
-			)
-
-			local scaled = {
-				point[1] * self.scale_xyz.x,
-				point[2] * self.scale_xyz.y,
-				point[3] * self.scale_xyz.z,
+	for index, t in pairs(self.trajectories) do
+		if t.point and t.redraw then
+			local p = {
+				t.point[1] * self.scale_xyz.x,
+				t.point[2] * self.scale_xyz.y,
+				t.point[3] * self.scale_xyz.z,
 			}
-			local p = self:rotate_y(scaled, self.rotation_y)
-			p = self:rotate_x(p, self.rotation_x)
 
-			local depth = math.max(0.1, distance - p[3])
-			local z = 1 / depth
-			local x2d = p[1] * z * scale + offsetX
-			local y2d = p[2] * z * scale + offsetY
-
-			local size = 20 / (depth ^ 1.2) -- Increased size for better visibility
-			size = math.max(5, math.min(size, 15))
-
-			-- Get color for this trajectory
+			local proj = self:project_point(p, scale, offsetX, offsetY, distance)
+			local depth = proj[3]
+			local size = math.max(5, math.min(15, 20 / depth))
 			local color = self:index_to_color(index)
+
 			g:set_color(table.unpack(color))
-			g:fill_ellipse(x2d - size / 2, y2d - size / 2, size, size)
-
-			-- White border for better visibility
+			g:fill_ellipse(proj[1] - size * 0.5, proj[2] - size * 0.5, size, size)
 			g:set_color(255, 255, 255)
-			g:stroke_ellipse(x2d - size / 2, y2d - size / 2, size, size, 2)
-
-			-- Draw trajectory index number
-			g:set_color(0, 0, 0)
-			local font_size = math.max(8, math.min(12, size * 0.8))
-			g:draw_text(tostring(index), x2d - 3, y2d - font_size / 2, 20, font_size)
+			g:stroke_ellipse(proj[1] - size * 0.5, proj[2] - size * 0.5, size, size, 2)
 		end
 	end
 end
 
 --╭─────────────────────────────────────╮
---│         3D to 2D projection         │
---╰─────────────────────────────────────╯
-function projection:rotate_x(v, angle)
-	local x, y, z = table.unpack(v)
-	local c, s = math.cos(angle), math.sin(angle)
-	return { x, y * c - z * s, y * s + z * c }
-end
-
--- ─────────────────────────────────────
-function projection:rotate_y(v, angle)
-	local x, y, z = table.unpack(v)
-	local c, s = math.cos(angle), math.sin(angle)
-	return { x * c + z * s, y, -x * s + z * c }
-end
-
--- ─────────────────────────────────────
-function projection:draw_3d_axis(g, axis_vec, label, color, scale, offsetX, offsetY, distance)
-	local origin = { 0, 0, 0 }
-	local tip = axis_vec
-
-	origin = self:rotate_y(origin, self.rotation_y)
-	origin = self:rotate_x(origin, self.rotation_x)
-
-	tip = self:rotate_y(tip, self.rotation_y)
-	tip = self:rotate_x(tip, self.rotation_x)
-
-	local function project(v)
-		local depth = distance - v[3]
-		local z = 1 / depth
-		return {
-			v[1] * z * scale + offsetX,
-			v[2] * z * scale + offsetY,
-		}
-	end
-
-	local p1 = project(origin)
-	local p2 = project(tip)
-
-	g:set_color(table.unpack(color))
-	g:draw_line(p1[1], p1[2], p2[1], p2[2], 1.5)
-
-	g:draw_text(label, p2[1] + 3, p2[2] + 3, 12, 12)
-end
-
-function projection:azimuth_elevation_to_xyz(azimuth_deg, elevation_deg, radius)
-	radius = radius or 0.5
-	local az = math.rad(azimuth_deg or 0)
-	local el = math.rad(elevation_deg or 0)
-
-	local cosEl = math.cos(el)
-	local x = -radius * math.sin(az) * cosEl
-	local y = radius * math.sin(el)
-	local z = -radius * math.cos(az) * cosEl
-
-	return x, y, z
-end
-
--- ─────────────────────────────────────
-function projection:evaluate_curve(t, trajectory)
-	local tx = trajectory.x
-	local ty = trajectory.y
-	local tz = trajectory.z
-
-	local count = math.min(#tx or 0, #ty or 0, #tz or 0)
-	if count < 2 then
-		return nil
-	end
-
-	-- Clamp t to [0, 1]
-	t = math.max(0, math.min(1, t))
-	local segment = t * (count - 1)
-	local i = math.floor(segment) + 1
-	local frac = segment - math.floor(segment)
-
-	local i_next = math.min(count, i + 1)
-
-	-- Linear interpolation in 3D space
-	local x = tx[i] * (1 - frac) + tx[i_next] * frac
-	local y = ty[i] * (1 - frac) + ty[i_next] * frac
-	local z = tz[i] * (1 - frac) + tz[i_next] * frac
-
-	return { x, y, z }
-end
-
---╭─────────────────────────────────────╮
---│                 DEV                 │
+--│               DEV                   │
 --╰─────────────────────────────────────╯
 function projection:in_1_reload()
 	self:dofilex(self._scriptname)

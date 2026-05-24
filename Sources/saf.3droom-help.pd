@@ -1,4 +1,4 @@
-#N canvas 669 149 920 804 10;
+#N canvas 0 0 925 1132 10;
 #X declare -path ../Sources;
 #X declare -lib else;
 #X obj 306 6 cnv 15 250 40 empty empty empty 12 13 0 18 #7c7c7c #e0e4dc 0;
@@ -42,12 +42,12 @@
 #X text 150 621 signal - output signal (multichannel when using -m);
 #X msg 13 115 reload;
 #X obj 299 52 declare -path ../Sources;
-#N canvas 277 528 458 452 positions 1;
+#N canvas 0 0 925 1132 positions 1;
 #X obj 10 13 loadbang;
 #X obj 10 177 outlet;
 #X msg 165 72 linez 2 1.4 1.5 1.4 -0.5 \, liney 2 0.2 1.3 0.5 -1.5 \, linex 2 0.2 0.5 -1.3 1.5 \,, f 27;
 #X msg 342 72 liney 3 1.4 1.5 1.4 -0.5 \, linez 3 0.2 1.3 0.5 -1.5 \, linex 3 0.2 0.5 -1.3 1.5 \,, f 27;
-#X msg 10 73 linex 1 2.5 0.5 0.4 -0.5 \, liney 1 2.2 1 0.5 -0.5 \, linez 1 0.2 0.5 1 0.5 \,, f 23;
+#X msg 10 73 linex 1 1.5 0.5 0.4 -0.5 \, liney 1 1.2 1 0.5 -0.5 \, linez 1 0.2 0.5 1 0.5 \,, f 23;
 #X connect 0 0 4 0;
 #X connect 0 0 2 0;
 #X connect 0 0 3 0;
