@@ -74,16 +74,13 @@ elseif(EMSCRIPTEN)
     include_directories("${OPENBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include/")
 
     # Gerar cabeçalho de manipulação do CBLAS
-    set(CBLAS_MANGLING_HEADER "${CMAKE_CURRENT_BINARY_DIR}/cblas_mangling.h")
+    set(CBLAS_MANGLING_HEADER "${CMAKE_BINARY_DIR}/cblas_mangling.h")
     file(WRITE "${CBLAS_MANGLING_HEADER}" "")
 
     set(LIB_OPENBLAS "${CMAKE_BINARY_DIR}/libopenblas.a")
     if(NOT EXISTS ${LIB_OPENBLAS})
-        file(
-            DOWNLOAD https://github.com/charlesneimog/pd4web/raw/refs/heads/main/Resources/Wasm/libopenblas.a
-            ${LIB_OPENBLAS}
-            SHOW_PROGRESS
-            STATUS DOWNLOAD_STATUS)
+        file(DOWNLOAD https://github.com/charlesneimog/pd4web/raw/refs/heads/main/Resources/Wasm/libopenblas.a
+             ${LIB_OPENBLAS} STATUS DOWNLOAD_STATUS)
     endif()
 
     set(LAPACKE_LIBRARY "${LIB_OPENBLAS}")
@@ -110,11 +107,11 @@ set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
 cpmaddpackage("gh:leomccormack/Spatial_Audio_Framework@1.3.4")
 target_include_directories(
     saf
-    PUBLIC ${OpenBLAS_BINARY_DIR} # Provides the safe, generated cblas.h and openblas_config.h
-           ${CMAKE_BINARY_DIR}/generated
-           ${CMAKE_BINARY_DIR}/
-           ${OpenBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include # Provides static lapacke.h
-           ${OpenBLAS_BINARY_DIR}/lapack-netlib/LAPACKE/include # Provides generated lapacke_mangling.h
+    PRIVATE ${OpenBLAS_BINARY_DIR} # Provides the safe, generated cblas.h and openblas_config.h
+            ${CMAKE_BINARY_DIR}/generated
+            ${CMAKE_BINARY_DIR}/
+            ${OpenBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include # Provides static lapacke.h
+            ${OpenBLAS_BINARY_DIR}/lapack-netlib/LAPACKE/include # Provides generated lapacke_mangling.h
 )
 target_include_directories(saf PUBLIC "${saf_SOURCE_DIR}/../examples/include/")
 if(NOT APPLE AND NOT EMSCRIPTEN)
