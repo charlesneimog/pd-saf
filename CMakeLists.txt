@@ -102,7 +102,7 @@ cpmaddpackage(
 # │                 SAF                  │
 # ╰──────────────────────────────────────╯
 set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
-cpmaddpackage("gh:leomccormack/Spatial_Audio_Framework@1.3.4")
+cpmaddpackage("gh:charlesneimog/Spatial_Audio_Framework#emscripten")
 target_include_directories(
     saf
     PRIVATE ${OpenBLAS_BINARY_DIR} # Provides the safe, generated cblas.h and openblas_config.h
