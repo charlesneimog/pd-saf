@@ -101,8 +101,6 @@ cpmaddpackage(
 # ╭──────────────────────────────────────╮
 # │                 SAF                  │
 # ╰──────────────────────────────────────╯
-set(LAPACKE_LIBRARY "LAPACKE")
-set(OPENBLAS_LIBRARY "openblas")
 set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
 cpmaddpackage("gh:leomccormack/Spatial_Audio_Framework@1.3.4")
 target_include_directories(
