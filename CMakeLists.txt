@@ -38,6 +38,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT EMSCRIPTEN)
         https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33.tar.gz
         OPTIONS
         "BUILD_SHARED_LIBS OFF")
+
 elseif(EMSCRIPTEN)
     set(OPENBLAS_FILE "${CMAKE_BINARY_DIR}/OpenBLAS.zip")
     set(OPENBLAS_SOURCE_DIR "${CMAKE_BINARY_DIR}/OpenBLAS") # Nome fixo da pasta extraída
@@ -102,14 +103,14 @@ cpmaddpackage(
 # │                 SAF                  │
 # ╰──────────────────────────────────────╯
 set(SAF_PERFORMANCE_LIB SAF_USE_OPEN_BLAS_AND_LAPACKE)
-cpmaddpackage("gh:charlesneimog/Spatial_Audio_Framework#emscripten")
+cpmaddpackage("gh:leomccormack/Spatial_Audio_Framework#develop")
 target_include_directories(
     saf
-    PRIVATE ${OpenBLAS_BINARY_DIR} # Provides the safe, generated cblas.h and openblas_config.h
-            ${CMAKE_BINARY_DIR}/generated
-            ${CMAKE_BINARY_DIR}/
-            ${OpenBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include # Provides static lapacke.h
-            ${OpenBLAS_BINARY_DIR}/lapack-netlib/LAPACKE/include # Provides generated lapacke_mangling.h
+    PUBLIC ${OpenBLAS_BINARY_DIR} # Provides the safe, generated cblas.h and openblas_config.h
+           ${CMAKE_BINARY_DIR}/generated
+           ${CMAKE_BINARY_DIR}/
+           ${OpenBLAS_SOURCE_DIR}/lapack-netlib/LAPACKE/include # Provides static lapacke.h
+           ${OpenBLAS_BINARY_DIR}/lapack-netlib/LAPACKE/include # Provides generated lapacke_mangling.h
 )
 target_include_directories(saf PUBLIC "${saf_SOURCE_DIR}/../examples/include/")
 if(NOT APPLE AND NOT EMSCRIPTEN)
