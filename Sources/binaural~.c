@@ -163,11 +163,14 @@ static void binaural_tilde_set(t_binaural_tilde *x, t_symbol *s, int argc, t_ato
     }
 
     else if (strcmp(method, "fyaw") == 0) {
-        ambi_bin_setFlipYaw(x->hAmbi, atom_getint(argv));
+        ambi_bin_setFlipYaw(x->hAmbi, atom_getfloat(argv));
     } else if (strcmp(method, "fpitch") == 0) {
-        ambi_bin_setFlipPitch(x->hAmbi, atom_getint(argv));
+        ambi_bin_setFlipPitch(x->hAmbi, atom_getfloat(argv));
     } else if (strcmp(method, "froll") == 0) {
-        ambi_bin_setFlipRoll(x->hAmbi, atom_getint(argv));
+        ambi_bin_setFlipRoll(x->hAmbi, atom_getfloat(argv));
+    } else {
+        pd_error(x, "[saf.binaural~] Unrecognized method: %s", method);
+        return;
     }
 
     if (ambi_bin_getCodecStatus(x->hAmbi) == CODEC_STATUS_NOT_INITIALISED) {
@@ -426,8 +429,8 @@ void setup_saf0x2ebinaural_tilde(void) {
     class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("yaw"), A_GIMME, 0);
     class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("pitch"), A_GIMME, 0);
     class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("roll"), A_GIMME, 0);
-    class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("flipyaw"), A_GIMME, 0);
-    class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("flippitch"), A_GIMME, 0);
-    class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("fliproll"), A_GIMME, 0);
+    class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("fyaw"), A_GIMME, 0);
+    class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("fpitch"), A_GIMME, 0);
+    class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("froll"), A_GIMME, 0);
     class_addmethod(binaural_tilde_class, (t_method)binaural_tilde_set, gensym("rpyflag"), A_GIMME, 0);
 }

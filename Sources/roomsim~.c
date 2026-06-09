@@ -38,45 +38,47 @@ typedef struct _ambi_roomsim {
 
 // ─────────────────────────────────────
 static void ambiroom_tilde_malloc(t_ambi_roomsim_tilde *x) {
-    int prevIn = x->nPreviousIn;
-    int prevOut = x->nPreviousOut;
-
-    /* free previous allocations (if any) using the *previous* counts) */
+    // Safe free of previous input allocations
     if (x->aIns) {
-        for (int i = 0; i < prevIn; i++) {
+        for (int i = 0; i < x->nPreviousIn; i++) {
             if (x->aIns[i]) {
                 freebytes(x->aIns[i], x->nAmbiFrameSize * sizeof(t_sample));
             }
-            if (x->aInsTmp && x->aInsTmp[i]) {
-                freebytes(x->aInsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
-            }
         }
-        freebytes(x->aIns, prevIn * sizeof(t_sample *));
+        freebytes(x->aIns, x->nPreviousIn * sizeof(t_sample *));
         x->aIns = NULL;
     }
     if (x->aInsTmp) {
-        freebytes(x->aInsTmp, prevIn * sizeof(t_sample *));
+        for (int i = 0; i < x->nPreviousIn; i++) {
+            if (x->aInsTmp[i]) {
+                freebytes(x->aInsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+        freebytes(x->aInsTmp, x->nPreviousIn * sizeof(t_sample *));
         x->aInsTmp = NULL;
     }
 
+    // Safe free of previous output allocations
     if (x->aOuts) {
-        for (int i = 0; i < prevOut; i++) {
+        for (int i = 0; i < x->nPreviousOut; i++) {
             if (x->aOuts[i]) {
                 freebytes(x->aOuts[i], x->nAmbiFrameSize * sizeof(t_sample));
             }
-            if (x->aOutsTmp && x->aOutsTmp[i]) {
-                freebytes(x->aOutsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
-            }
         }
-        freebytes(x->aOuts, prevOut * sizeof(t_sample *));
+        freebytes(x->aOuts, x->nPreviousOut * sizeof(t_sample *));
         x->aOuts = NULL;
     }
     if (x->aOutsTmp) {
-        freebytes(x->aOutsTmp, prevOut * sizeof(t_sample *));
+        for (int i = 0; i < x->nPreviousOut; i++) {
+            if (x->aOutsTmp[i]) {
+                freebytes(x->aOutsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+        freebytes(x->aOutsTmp, x->nPreviousOut * sizeof(t_sample *));
         x->aOutsTmp = NULL;
     }
 
-    /* Now allocate according to current x->nIn / x->nOut */
+    // New allocations based on current nIn / nOut
     x->aIns = (t_sample **)getbytes(x->nIn * sizeof(t_sample *));
     x->aInsTmp = (t_sample **)getbytes(x->nIn * sizeof(t_sample *));
     x->aOuts = (t_sample **)getbytes(x->nOut * sizeof(t_sample *));
@@ -96,12 +98,11 @@ static void ambiroom_tilde_malloc(t_ambi_roomsim_tilde *x) {
 }
 
 // ╭─────────────────────────────────────╮
-// │               Methods               │
+// │                Methods              │
 // ╰─────────────────────────────────────╯
 static void ambiroom_tilde_set(t_ambi_roomsim_tilde *x, t_symbol *s, int argc, t_atom *argv) {
     const char *method = s->s_name;
 
-    // Positions
     if (strcmp(method, "source") == 0) {
         float index = atom_getfloat(argv) - 1;
         float pos_x = atom_getfloat(argv + 1);
@@ -112,13 +113,21 @@ static void ambiroom_tilde_set(t_ambi_roomsim_tilde *x, t_symbol *s, int argc, t
         ambi_roomsim_setSourceZ(x->hAmbi, index, pos_z);
     } else if (strcmp(method, "receiver") == 0) {
         float index = atom_getfloat(argv) - 1;
+        if (index < 1) {
+            pd_error(x, "[saf.roomsim~] Index must be higher than 1");
+            return;
+        }
+
+        if (index >= ambi_roomsim_getNumReceivers(x->hAmbi)) {
+            pd_error(x, "[saf.roomsim~] Use 'receivers' to set more receivers");
+            return;
+        }
         float pos_x = atom_getfloat(argv + 1);
         float pos_y = atom_getfloat(argv + 2);
         float pos_z = atom_getfloat(argv + 3);
         ambi_roomsim_setReceiverX(x->hAmbi, index, pos_x);
         ambi_roomsim_setReceiverY(x->hAmbi, index, pos_y);
         ambi_roomsim_setReceiverZ(x->hAmbi, index, pos_z);
-        ambi_roomsim_setNumReceivers(x->hAmbi, x->nReceivers);
     } else if (strcmp(method, "roomdim") == 0) {
         float x_pos = atom_getfloat(argv);
         float y_pos = atom_getfloat(argv + 1);
@@ -129,19 +138,16 @@ static void ambiroom_tilde_set(t_ambi_roomsim_tilde *x, t_symbol *s, int argc, t
         x->hAmbiInit = 0;
         canvas_update_dsp();
     } else if (strcmp(method, "reflections") == 0) {
-        // IMS Image Source Method,
         int enableIMS = atom_getint(argv + 1);
         ambi_roomsim_setEnableIMSflag(x->hAmbi, enableIMS);
     } else if (strcmp(method, "maxreflectionorder") == 0) {
         int maxReflectionOrder = atom_getint(argv + 1);
         pd_assert(x, maxReflectionOrder > 0, "[saf.roomsim~] Max reflection order must be > 0");
         if (maxReflectionOrder > 7) {
-            logpost(x, 2, "[saf.roomsim~] Numbers higher then 7 is a very high reflection order");
+            logpost(x, 2, "[saf.roomsim~] Numbers higher than 7 is a very high reflection order");
         }
         ambi_roomsim_setMaxReflectionOrder(x->hAmbi, maxReflectionOrder);
     } else if (strcmp(method, "wallabscoeff") == 0) {
-        // set ambi_roomsim_setWallAbsCoeff
-        // set wallabscoeff <+x> <-x> <+y> <-y> <+z> <-z>
         float coeffx_plus = atom_getfloat(argv);
         float coeffx_minus = atom_getfloat(argv + 1);
         float coeffy_plus = atom_getfloat(argv + 2);
@@ -166,13 +172,21 @@ static void ambiroom_tilde_set(t_ambi_roomsim_tilde *x, t_symbol *s, int argc, t
         switch (normType) {
         case NORM_N3D:
             ambi_roomsim_setNormType(x->hAmbi, NORM_N3D);
+            break;
         case NORM_SN3D:
             ambi_roomsim_setNormType(x->hAmbi, NORM_SN3D);
+            break;
         case NORM_FUMA:
             ambi_roomsim_setNormType(x->hAmbi, NORM_FUMA);
+            break;
         default:
             pd_error(x, "[saf.roomsim~] Unknown normtype: %s", method);
         }
+    } else if (strcmp(method, "receivers") == 0) {
+        float num_receivers = atom_getfloat(argv);
+        ambi_roomsim_setNumReceivers(x->hAmbi, num_receivers);
+    } else {
+        pd_error(x, "[saf.roomsim~] Unknown method %s", method);
     }
 }
 
@@ -189,16 +203,14 @@ t_int *ambiroom_tilde_performmultichannel(t_int *w) {
         }
         x->nInAccIndex += n;
 
-        // Process only if a full frame is ready
         if (x->nInAccIndex == x->nAmbiFrameSize) {
             ambi_roomsim_process(x->hAmbi, (const float *const *)x->aIns, (float *const *)x->aOuts,
                                  x->nIn, x->nOut, x->nAmbiFrameSize);
             x->nInAccIndex = 0;
-            x->nOutAccIndex = 0; // Reset for the next frame
+            x->nOutAccIndex = 0;
         }
 
         if (x->nOutAccIndex + n <= x->nAmbiFrameSize) {
-            // Copy valid processed data
             for (int ch = 0; ch < x->nOut; ch++) {
                 memcpy(outs + (n * ch), x->aOuts[ch] + x->nOutAccIndex, n * sizeof(t_sample));
             }
@@ -211,19 +223,16 @@ t_int *ambiroom_tilde_performmultichannel(t_int *w) {
     } else {
         int chunks = n / x->nAmbiFrameSize;
         for (int chunkIndex = 0; chunkIndex < chunks; chunkIndex++) {
-            // Copia os dados de entrada para cada canal
             for (int ch = 0; ch < x->nIn; ch++) {
                 memcpy(x->aInsTmp[ch], (t_sample *)w[3] + ch * n + chunkIndex * x->nAmbiFrameSize,
                        x->nAmbiFrameSize * sizeof(t_sample));
             }
-            // Processa o bloco atual
+
             ambi_roomsim_process(x->hAmbi, (const float *const *)x->aInsTmp,
                                  (float *const *)x->aOutsTmp, x->nIn, x->nOut, x->nAmbiFrameSize);
 
-            t_sample *out = (t_sample *)(w[4]);
-            // Copia o resultado para os canais de saída com o offset correto
             for (int ch = 0; ch < x->nOut; ch++) {
-                memcpy(out + ch * n + chunkIndex * x->nAmbiFrameSize, x->aOutsTmp[ch],
+                memcpy(outs + ch * n + chunkIndex * x->nAmbiFrameSize, x->aOutsTmp[ch],
                        x->nAmbiFrameSize * sizeof(t_sample));
             }
         }
@@ -242,12 +251,14 @@ t_int *ambiroom_tilde_perform(t_int *w) {
             memcpy(x->aIns[ch] + x->nInAccIndex, (t_sample *)w[3 + ch], n * sizeof(t_sample));
         }
         x->nInAccIndex += n;
+
         if (x->nInAccIndex == x->nAmbiFrameSize) {
             ambi_roomsim_process(x->hAmbi, (const float *const *)x->aIns, (float *const *)x->aOuts,
                                  x->nIn, x->nOut, x->nAmbiFrameSize);
             x->nInAccIndex = 0;
             x->nOutAccIndex = 0;
         }
+
         for (int ch = 0; ch < x->nOut; ch++) {
             t_sample *out = (t_sample *)(w[3 + x->nIn + ch]);
             memcpy(out, x->aOuts[ch] + x->nOutAccIndex, n * sizeof(t_sample));
@@ -260,8 +271,10 @@ t_int *ambiroom_tilde_perform(t_int *w) {
                 memcpy(x->aInsTmp[ch], (t_sample *)w[3 + ch] + (chunkIndex * x->nAmbiFrameSize),
                        x->nAmbiFrameSize * sizeof(t_sample));
             }
+
             ambi_roomsim_process(x->hAmbi, (const float *const *)x->aInsTmp,
                                  (float *const *)x->aOutsTmp, x->nIn, x->nOut, x->nAmbiFrameSize);
+
             for (int ch = 0; ch < x->nOut; ch++) {
                 t_sample *out = (t_sample *)(w[3 + x->nIn + ch]);
                 memcpy(out + (chunkIndex * x->nAmbiFrameSize), x->aOutsTmp[ch],
@@ -275,45 +288,40 @@ t_int *ambiroom_tilde_perform(t_int *w) {
 
 // ─────────────────────────────────────
 void ambiroom_tilde_dsp(t_ambi_roomsim_tilde *x, t_signal **sp) {
-    // This is a mess! Help is you see a better way.
-
-    // ambi_roomsim_getFrameSize has fixed frameSize, for encoder is 64 for
-    // decoder is 128. In the perform method sometimes I need to accumulate samples sometimes I
-    // need to process 2 or more times to avoid change how ambi_roomsim_ works. I think that in
-    // this way is more safe, once that these functions are tested in the main repo. But maybe
-    // worse to implement the own set of functions.
-
     x->nPdFrameSize = sp[0]->s_n;
-    x->nIn = sp[0]->s_nchans;
     x->nOutAccIndex = 0;
     x->nInAccIndex = 0;
+
+    x->nIn = x->multichannel ? sp[0]->s_nchans : x->nIn;
+    if (x->nOrder < 1) {
+        x->nOrder = 1;
+    }
+
     int sum = x->nIn + x->nOut;
     int sigvecsize = sum + 2;
 
-    // Set frame sizes and reset indices
     x->nAmbiFrameSize = ambi_roomsim_getFrameSize();
 
-    // Initialize the ambisonic encoder
     if (!x->hAmbiInit) {
         ambi_roomsim_init(x->hAmbi, sys_getsr());
         ambi_roomsim_setOutputOrder(x->hAmbi, (SH_ORDERS)x->nOrder);
         if (ambi_roomsim_getNSHrequired(x->hAmbi) < x->nOut) {
-            pd_error(x, "[saf.encoder~] Number of output signals is too low for the %d order.",
+            pd_error(x, "[saf.roomsim~] Number of output signals is too low for the %d order.",
                      x->nOrder);
             return;
         }
         x->hAmbiInit = 1;
     }
 
-    if (x->nPreviousIn != x->nIn) {
-        printf("before free\n");
-        ambiroom_tilde_malloc(x);
+    if (x->nPreviousIn != x->nIn || x->nPreviousOut != x->nOut) {
         ambi_roomsim_setNumSources(x->hAmbi, x->nIn);
-        printf("after free\n");
-        x->nPreviousIn = x->nIn;
+        ambiroom_tilde_malloc(x);
     }
 
-    // add perform method
+    if (sp[0]->s_nchans > 1 && !x->multichannel) {
+        pd_error(x, "Multichannel mode is off, but input is multichannel, use '-m' flag");
+    }
+
     if (x->multichannel) {
         x->nIn = sp[0]->s_nchans;
         signal_setmultiout(&sp[1], x->nOut);
@@ -339,19 +347,19 @@ void *ambiroom_tilde_new(t_symbol *s, int argc, t_atom *argv) {
         pd_error(NULL, "[saf.roomsim~] Wrong number of arguments, use [saf.roomsim~ "
                        "<num_sources> <ambisonic_order>] or [saf.roomsim~ -m <ambisonic_order>] "
                        "for multichannel input");
-
         return NULL;
     }
 
     t_ambi_roomsim_tilde *x = (t_ambi_roomsim_tilde *)pd_new(ambiroom_tilde_class);
     int order = 1;
     int num_sources = 4;
+
     if (argv[0].a_type == A_SYMBOL) {
         if (strcmp(atom_getsymbol(argv)->s_name, "-m") != 0) {
             pd_error(x, "[saf.roomsim~] Expected '-m' in second argument.");
             return NULL;
         }
-        order = (argc >= 1) ? atom_getint(argv + 1) : 1;
+        order = (argc >= 2) ? atom_getint(argv + 1) : 1;
         x->multichannel = 1;
     } else {
         num_sources = (argc >= 1) ? atom_getint(argv) : 1;
@@ -396,34 +404,38 @@ void *ambiroom_tilde_new(t_symbol *s, int argc, t_atom *argv) {
 // ─────────────────────────────────────
 void ambiroom_tilde_free(t_ambi_roomsim_tilde *x) {
     ambi_roomsim_destroy(&x->hAmbi);
-    for (int i = 0; i < x->nIn; i++) {
-        if (x->aIns) {
-            freebytes(x->aIns[i], x->nAmbiFrameSize * sizeof(t_sample));
-        }
-        if (x->aInsTmp) {
-            freebytes(x->aInsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
-        }
-    }
-    for (int i = 0; i < x->nOut; i++) {
-        if (x->aOuts) {
-            freebytes(x->aOuts[i], x->nAmbiFrameSize * sizeof(t_sample));
-        }
-        if (x->aOutsTmp) {
-            freebytes(x->aOutsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
-        }
-    }
 
     if (x->aIns) {
-        freebytes(x->aIns, x->nIn * sizeof(t_sample *));
+        for (int i = 0; i < x->nPreviousIn; i++) {
+            if (x->aIns[i]) {
+                freebytes(x->aIns[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+        freebytes(x->aIns, x->nPreviousIn * sizeof(t_sample *));
     }
     if (x->aInsTmp) {
-        freebytes(x->aInsTmp, x->nIn * sizeof(t_sample *));
+        for (int i = 0; i < x->nPreviousIn; i++) {
+            if (x->aInsTmp[i]) {
+                freebytes(x->aInsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+        freebytes(x->aInsTmp, x->nPreviousIn * sizeof(t_sample *));
     }
     if (x->aOuts) {
-        freebytes(x->aOuts, x->nOut * sizeof(t_sample *));
+        for (int i = 0; i < x->nPreviousOut; i++) {
+            if (x->aOuts[i]) {
+                freebytes(x->aOuts[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+        freebytes(x->aOuts, x->nPreviousOut * sizeof(t_sample *));
     }
     if (x->aOutsTmp) {
-        freebytes(x->aOutsTmp, x->nOut * sizeof(t_sample *));
+        for (int i = 0; i < x->nPreviousOut; i++) {
+            if (x->aOutsTmp[i]) {
+                freebytes(x->aOutsTmp[i], x->nAmbiFrameSize * sizeof(t_sample));
+            }
+        }
+        freebytes(x->aOutsTmp, x->nPreviousOut * sizeof(t_sample *));
     }
 }
 
@@ -434,12 +446,8 @@ void setup_saf0x2eroomsim_tilde(void) {
                                      (t_method)ambiroom_tilde_free, sizeof(t_ambi_roomsim_tilde),
                                      CLASS_DEFAULT | CLASS_MULTICHANNEL, A_GIMME, 0);
 
-    // logpost(NULL, 3, "[saf] is a pd version of Spatial Audio Framework by Leo McCormack");
-    // logpost(NULL, 3, "[saf] pd-saf by Charles K. Neimog");
-
     CLASS_MAINSIGNALIN(ambiroom_tilde_class, t_ambi_roomsim_tilde, sample);
     class_addmethod(ambiroom_tilde_class, (t_method)ambiroom_tilde_dsp, gensym("dsp"), A_CANT, 0);
-    // class_addmethod(ambiroom_tilde_class, (t_method)ambiroom_tilde_set, gensym("set"), A_GIMME, 0);
 
     class_addmethod(ambiroom_tilde_class, (t_method)ambiroom_tilde_set, gensym("source"), A_GIMME, 0);
     class_addmethod(ambiroom_tilde_class, (t_method)ambiroom_tilde_set, gensym("roomdim"), A_GIMME, 0);
@@ -449,4 +457,6 @@ void setup_saf0x2eroomsim_tilde(void) {
     class_addmethod(ambiroom_tilde_class, (t_method)ambiroom_tilde_set, gensym("wallabscoeff"), A_GIMME, 0);
     class_addmethod(ambiroom_tilde_class, (t_method)ambiroom_tilde_set, gensym("normtype"), A_GIMME, 0);
 
+    //
+    class_addmethod(ambiroom_tilde_class, (t_method)ambiroom_tilde_set, gensym("receivers"), A_GIMME, 0);
 }
