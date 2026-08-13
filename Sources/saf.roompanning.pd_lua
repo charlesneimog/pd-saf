@@ -63,12 +63,7 @@ end
 function roompanning:postinitialize()
 	self:outlet(1, "roomdim", { self.room.x, self.room.y, self.room.z })
 	for i, recv in ipairs(self.receivers) do
-		self:outlet(1, "receiver", {
-			i,
-			recv.coords.x,
-			recv.coords.y,
-			recv.coords.z,
-		})
+		self:output_receiver(i, recv.coords)
 	end
 	for i, spk in ipairs(self.loudspeakers) do
 		self:outlet(2, "speaker", { i, spk.azi, spk.ele })
@@ -104,6 +99,28 @@ function roompanning:clamp(value, minv, maxv)
 		return maxv
 	end
 	return value
+end
+
+-- ─────────────────────────────────────
+-- The room GUI uses the SAF listening convention (+X front, +Y left,
+-- +Z up). The room simulator's public Y position, however, is measured from
+-- the opposite side of the room and is flipped internally before generating
+-- the spherical-harmonic directions. Mirror Y at this boundary so that a
+-- source drawn on the left is encoded at a positive (leftward) azimuth.
+function roompanning:to_roomsim_coords(coords)
+	return coords.x, self.room.y - coords.y, coords.z
+end
+
+-- ─────────────────────────────────────
+function roompanning:output_source(index, coords)
+	local x, y, z = self:to_roomsim_coords(coords)
+	self:outlet(1, "source", { index, x, y, z })
+end
+
+-- ─────────────────────────────────────
+function roompanning:output_receiver(index, coords)
+	local x, y, z = self:to_roomsim_coords(coords)
+	self:outlet(1, "receiver", { index, x, y, z })
 end
 
 -- ─────────────────────────────────────
@@ -239,7 +256,7 @@ function roompanning:in_1_source(args)
 	}
 
 	src.selected = false
-	self:outlet(1, "source", { index, src.coords.x, src.coords.y, src.coords.z })
+	self:output_source(index, src.coords)
 	self:repaint(2)
 end
 
@@ -269,7 +286,7 @@ function roompanning:in_1_set(args)
 		src.coords.z = self:clamp(zm, 0, self.room.z)
 		src.selected = false
 
-		self:outlet(1, "set", { "source", index, src.coords.x, src.coords.y, src.coords.z })
+		self:output_source(index, src.coords)
 		self:repaint(2)
 	elseif cmd == "roomdim" then
 		self.room.x = tonumber(args[2]) or self.room.x
@@ -318,10 +335,10 @@ function roompanning:in_1_roomdim(args)
 	self:outlet(1, "roomdim", { self.room.x, self.room.y, self.room.z })
 
 	for idx, recv in ipairs(self.receivers) do
-		self:outlet(1, "receiver", { idx, recv.coords.x, recv.coords.y, recv.coords.z })
+		self:output_receiver(idx, recv.coords)
 	end
 	for idx, src in pairs(self.sources) do
-		self:outlet(1, "source", { idx, src.coords.x, src.coords.y, src.coords.z })
+		self:output_source(idx, src.coords)
 	end
 
 	self:repaint()
@@ -350,7 +367,7 @@ function roompanning:in_1_receiver(args)
 	recv.coords.y = self:clamp(ym, 0, self.room.y)
 	recv.coords.z = self:clamp(zm, 0, self.room.z)
 
-	self:outlet(1, "receiver", { index, recv.coords.x, recv.coords.y, recv.coords.z })
+	self:output_receiver(index, recv.coords)
 	self:repaint(2)
 end
 
@@ -400,7 +417,7 @@ function roompanning:mouse_drag(mx, my)
 		src.coords.y = updated.y
 		src.coords.z = updated.z
 
-		self:outlet(1, "source", { idx, updated.x, updated.y, updated.z })
+		self:output_source(idx, updated)
 		self:repaint(2)
 	end
 end

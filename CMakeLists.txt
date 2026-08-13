@@ -183,9 +183,9 @@ pd_add_external(saf.binaural~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/binaural~.c;$
                 saf)
 
 # ─────────────────────────────────────
-file(GLOB PITCHSHIFTER_TILDE_SOURCE "${saf_SOURCE_DIR}/examples/src/pitch_shifter/*.c")
-pd_add_external(saf.pitchshifter~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/pitchshifter~.c;${PITCHSHIFTER_TILDE_SOURCE}"
-                LINK_LIBRARIES saf)
+# file(GLOB PITCHSHIFTER_TILDE_SOURCE "${saf_SOURCE_DIR}/examples/src/pitch_shifter/*.c")
+# pd_add_external(saf.pitchshifter~ "${CMAKE_CURRENT_SOURCE_DIR}/Sources/pitchshifter~.c;${PITCHSHIFTER_TILDE_SOURCE}"
+# LINK_LIBRARIES saf)
 
 # ─────────────────────────────────────
 file(GLOB CONVOLVER_TILDE_SOURCE "${saf_SOURCE_DIR}/../examples/src/multiconv/*.c")
