@@ -270,6 +270,7 @@ function panning:in_1_numspeakers(args)
 	self.nspeakers = n
 	self.speakers_pos = {}
 
+	self:outlet(2, "numspeakers", { n })
 	for i = 0, self.nspeakers - 1 do
 		local azi = (360 / self.nspeakers) * i
 

@@ -115,6 +115,7 @@ static void encoder_tilde_set(t_encoder_tilde *x, t_symbol *s, int argc, t_atom 
         float newGain = atom_getfloat(argv); // Gain factor
         ambi_enc_setSourceGain(x->hAmbi, srcIdx, newGain);
     }
+
     ambi_enc_refreshParams(x->hAmbi);
 }
 
@@ -399,5 +400,7 @@ void setup_saf0x2eencoder_tilde(void) {
     class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_set, gensym("sourcegain"), A_GIMME,
                     0);
     class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_set, gensym("zeroindexed"),
+                    A_GIMME, 0);
+    class_addmethod(encoder_tilde_class, (t_method)encoder_tilde_set, gensym("numspeakers"),
                     A_GIMME, 0);
 }

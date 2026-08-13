@@ -174,13 +174,18 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
         t_float state = atom_getfloat(argv);
         ambi_dec_setUseDefaultHRIRsflag(x->hAmbi, state);
     } else if (strcmp(method, "binaural") == 0) {
-        x->binaural = atom_getfloat(argv);
+        if (argc < 1 || argv[0].a_type != A_FLOAT) {
+            pd_error(x, "[saf.decoder~] 'binaural' expects 0 or 1");
+            return;
+        }
+
+        x->binaural = atom_getfloat(argv) != 0;
         if (x->binaural) {
             x->nOut = 2;
-            ambi_dec_setBinauraliseLSflag(x->hAmbi, 1);
         } else {
             x->nOut = x->nFlagSpeakers;
         }
+        ambi_dec_setBinauraliseLSflag(x->hAmbi, x->binaural);
     } else if (strcmp(method, "speaker") == 0) {
         // The `loudspeaker` method sets the azimuth and elevation of a specific loudspeaker,
         // ensuring accurate spatial rendering of Ambisonic sources.
@@ -276,6 +281,32 @@ static void decoder_tilde_set(t_decoder_tilde *x, t_symbol *s, int argc, t_atom 
         // frequencies.
         float freq = atom_getfloat(argv + 1);
         ambi_dec_setTransitionFreq(x->hAmbi, freq);
+    } else if (strcmp(method, "numspeakers") == 0) {
+        if (argc < 1 || argv[0].a_type != A_FLOAT) {
+            pd_error(x, "[saf.decoder~] 'numspeakers' expects a speaker count");
+            return;
+        }
+
+        int speakers = atom_getint(argv);
+        int max_speakers = ambi_dec_getMaxNumLoudspeakers();
+        if (speakers < 1 || speakers > max_speakers) {
+            pd_error(x, "[saf.decoder~] Speaker count must be between 1 and %d", max_speakers);
+            return;
+        }
+        if (!x->multichannel && speakers != x->nFlagSpeakers) {
+            pd_error(x,
+                     "[saf.decoder~] Cannot change the number of outlets after creation; use the "
+                     "'-m' flag for a variable speaker count");
+            return;
+        }
+
+        x->nFlagSpeakers = speakers;
+        if (!x->binaural) {
+            x->nOut = speakers;
+        }
+        ambi_dec_setNumLoudspeakers(x->hAmbi, speakers);
+    } else {
+        pd_error(x, "[saf.decoder~] '%s' not a valid method", method);
     }
     if (ambi_dec_getCodecStatus(x->hAmbi) == CODEC_STATUS_NOT_INITIALISED) {
         canvas_update_dsp();
@@ -425,7 +456,7 @@ void decoder_tilde_dsp(t_decoder_tilde *x, t_signal **sp) {
             ambi_dec_setOutputConfigPreset(x->hAmbi, preset);
         }
 
-        ambi_dec_setNumLoudspeakers(x->hAmbi, x->nOut);
+        ambi_dec_setNumLoudspeakers(x->hAmbi, x->nFlagSpeakers);
 
         // decoder_tilde_configure_default_speakers(x);
 
@@ -584,5 +615,5 @@ void setup_saf0x2edecoder_tilde(void) {
     class_addmethod(decoder_tilde_class, (t_method)decoder_tilde_set, gensym("decmethod"), A_GIMME, 0);
     class_addmethod(decoder_tilde_class, (t_method)decoder_tilde_set, gensym("max-rE"), A_GIMME, 0);
     class_addmethod(decoder_tilde_class, (t_method)decoder_tilde_set, gensym("transitionfreq"), A_GIMME, 0);
+    class_addmethod(decoder_tilde_class, (t_method)decoder_tilde_set, gensym("numspeakers"), A_GIMME, 0);
 }
-
